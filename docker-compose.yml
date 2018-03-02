@@ -1,0 +1,33 @@
+version: '3.1'
+
+# environment values are loaded from .env
+
+secrets:
+  aws_credentials:
+    file: ~/.aws/credentials
+  aws_config:
+    file: ~/.aws/config
+
+services:
+  dmarc-importer:
+    build:
+      context: .
+      args:
+        - MY_UID=777
+    image: dmarc-importer
+    command: "--debug"
+    volumes:
+     - ./dmarc:/usr/src/boat/dmarc
+    secrets:
+      - aws_credentials
+      - aws_config
+    # deploy:
+    #   replicas: 1
+    #   update_config:
+    #     parallelism: 1
+    #     delay: 10s
+    #   restart_policy:
+    #     condition: on-failure
+    #     delay: 5s
+    #     max_attempts: 3
+    #     window: 120s
