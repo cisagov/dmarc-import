@@ -119,7 +119,7 @@ def main():
     keys = [i.key for i in b.objects.all()]
     #keys = [#'9lnmq3vep46ud66g7361o2otm18gri276hpu3no1', # GOOD
     #       'dgjkhkmomb3iigunebqbbmpb1rnr76cfojnnqgo1'] # BAD
-print('Processing %d emails' % len(keys))
+    print('Processing %d emails' % len(keys))
     for key in keys:
         print('Processing: ' + key)
         body = b.Object(key).get()['Body'].read()
