@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-import logging
-import traceback
-import boto3
+import datetime
 import email
 import gzip
 import io
-import zipfile
-from lxml import etree
+import logging
 import re
+import traceback
+import zipfile
+
+import boto3
+import docopt
+from lxml import etree
 
 
 '''
@@ -19,39 +22,29 @@ BUCKET_NAME = 'cyhy-dmarc-report-emails'
 SCHEMA = etree.XMLSchema(file='/usr/src/boat/dmarc/rua_mod.xsd') #TODO
 PARSER = etree.XMLParser(schema=SCHEMA) #TODO
 
-def setup_logging(level=logging.INFO, console=False, filename=None):
-    LOGGER_FORMAT = '%(asctime)-15s %(levelname)s %(name)s - %(message)s'
-    formatter = logging.Formatter(LOGGER_FORMAT)
-    formatter.converter = time.gmtime # log times in UTC
-    root = logging.getLogger()
-    root.setLevel(level)
-    if console:
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        console_handler.addFilter(LogFilter())
-        root.addHandler(console_handler)
+def setup_logging(level=logging.INFO, filename=None):
+    logging.basicConfig(format='%(asctime)-15s %(levelname)s %(message)s', level=level)
     if filename:
         file_handler = RotatingFileHandler(filename, maxBytes=pow(1024,2) * 128, backupCount=9)
         file_handler.setFormatter(formatter)
         file_handler.addFilter(LogFilter())
         root.addHandler(file_handler)
-    return root
 
 def pp(tree):
     print(etree.tostring(tree, pretty_print=True).decode())
 
 def pp_validation_error(tree):
-    print(SCHEMA.error_log)
+    logging.error(SCHEMA.error_log)
     line_num = 2 # Dunno, it lines up with error messages
     for line in etree.tostring(tree).decode().splitlines():
-        print('%d\t%s' % (line_num, line))
+        logging.error('%d\t%s' % (line_num, line))
         line_num += 1
 
 def pp_parse_error(payload, e):
-    print(e.error_log)
+    logging.error(e.error_log)
     line_num = 1
     for line in payload.splitlines():
-        print('%d\t%s' % (line_num, line))
+        logging.error('%d\t%s' % (line_num, line))
         line_num += 1
 
 def patch_xml(payload):
@@ -69,7 +62,7 @@ def parse_payload(payload):
     return tree
 
 def decode_payload(content_type, payload):
-    print('\t' + content_type + '\t size:' + str(len(payload)))
+    logging.debug('\t' + content_type + '\t size:' + str(len(payload)))
     if content_type in ['application/x-zip-compressed', 'application/zip']:
         zip_bytes = io.BytesIO(payload)
         zip_file = zipfile.ZipFile(zip_bytes)
@@ -92,14 +85,14 @@ def process_payload(content_type, payload):
     patched = patch_xml(payload)
     tree = parse_payload(patched)
     if tree is None:
-        print('RUA payload FAILED xml parsing')
+        logging.error('RUA payload FAILED xml parsing')
         return None
 
     valid = SCHEMA.validate(tree)
     if valid:
-        print('RUA payload passed schema validation')
+        logging.debug('RUA payload passed schema validation')
     else:
-        print('RUA payload FAILED schema validation')
+        logging.error('RUA payload FAILED schema validation')
         pp_validation_error(tree)
     return tree
 
@@ -113,22 +106,29 @@ def process_message(message):
     return xml
 
 def main():
+    setup_logging()
+
     s3 = boto3.resource('s3')
     b = s3.Bucket(BUCKET_NAME)
     domains = set()
-    keys = [i.key for i in b.objects.all()]
-    #keys = [#'9lnmq3vep46ud66g7361o2otm18gri276hpu3no1', # GOOD
-    #       'dgjkhkmomb3iigunebqbbmpb1rnr76cfojnnqgo1'] # BAD
-    print('Processing %d emails' % len(keys))
-    for key in keys:
-        print('Processing: ' + key)
+    # keys = [i.key for i in b.objects.all()]
+    # keys = [#'9lnmq3vep46ud66g7361o2otm18gri276hpu3no1', # GOOD
+    #        'dgjkhkmomb3iigunebqbbmpb1rnr76cfojnnqgo1'] # BAD
+    # print('Processing %d emails' % len(keys))
+    for obj in b.objects.all():
+        key = obj.key
+        logging.info('Processing: ' + key)
         body = b.Object(key).get()['Body'].read()
         message = email.message_from_bytes(body)
         tree = process_message(message)
         if tree is not None:
-            d = tree.find('policy_published').find('domain').text
-            print(d)
-            domains.add(d)
+            domain = tree.find('policy_published').find('domain').text
+            start = tree.find('report_metadata').find('date_range').find('begin').text
+            end = tree.find('report_metadata').find('date_range').find('end').text
+            domains.add(domain)
+
+            logging.info('Received a report for {} from {}-{}'.format(domain, datetime.datetime.fromtimestamp(int(start)), datetime.datetime.fromtimestamp(int(end))))
+
     for d in sorted(list(domains)):
         print(d)
     #import IPython; IPython.embed() #<<< BREAKPOINT >>>
