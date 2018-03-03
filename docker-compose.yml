@@ -1,26 +1,26 @@
 version: '3.1'
 
-# environment values are loaded from .env
-
 secrets:
-  aws_credentials:
-    file: ~/.aws/credentials
+  aws_creds:
+    file: /home/jeremy_frasier/.aws/credentials
   aws_config:
-    file: ~/.aws/config
+    file: /home/jeremy_frasier/.aws/config
 
 services:
   dmarc-importer:
     build:
       context: .
-      args:
-        - MY_UID=777
-    image: dmarc-importer
+    image: dhsncats/dmarc-importer:latest
     command: "--debug"
     volumes:
      - ./dmarc:/usr/src/boat/dmarc
     secrets:
-      - aws_credentials
+      - aws_creds
       - aws_config
+    environment:
+      - AWS_CONFIG_FILE=/run/secrets/aws_config
+      - AWS_SHARED_CREDENTIALS_FILE=/run/secrets/aws_creds
+      - AWS_PROFILE=default
     # deploy:
     #   replicas: 1
     #   update_config:
