@@ -1,7 +1,7 @@
 # dmarc-import :postal_horn: :mailbox: #
 
-[![Build Status](https://travis-ci.org/dhs-ncats/cyhy-mailer.svg?branch=develop)](https://travis-ci.org/dhs-ncats/cyhy-mailer)
-[![Coverage Status](https://coveralls.io/repos/github/dhs-ncats/cyhy-mailer/badge.svg?branch=develop)](https://coveralls.io/github/dhs-ncats/cyhy-mailer?branch=develop)
+[![Build Status](https://travis-ci.org/dhs-ncats/dmarc-import.svg?branch=develop)](https://travis-ci.org/dhs-ncats/dmarc-import)
+[![Coverage Status](https://coveralls.io/repos/github/dhs-ncats/dmarc-import/badge.svg?branch=develop)](https://coveralls.io/github/dhs-ncats/dmarc-import?branch=develop)
 
 `dmarc-import` is a tool for parsing DMARC aggregate reports.  The
 expected format of these aggregate reports is described in
