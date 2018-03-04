@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import binascii
 import datetime
 import email
 import gzip
@@ -100,9 +101,15 @@ def process_message(message):
     if message.is_multipart():
         # loop through message parts
         for part in message.get_payload():
-            xml = process_payload(part.get_content_type(), part.get_payload(decode=True))
+            try:
+                xml = process_payload(part.get_content_type(), part.get_payload(decode=True))
+            except (binascii.Error, AssertionError) as e:
+                logging.error('Caught an exception', e)
     else: # not multipart
-        xml = process_payload(message.get_content_type(), message.get_payload(decode=True))
+        try:
+            xml = process_payload(message.get_content_type(), message.get_payload(decode=True))
+        except (binascii.Error, AssertionError) as e:
+                logging.error('Caught an exception', e)
     return xml
 
 def main():
@@ -111,10 +118,6 @@ def main():
     s3 = boto3.resource('s3')
     b = s3.Bucket(BUCKET_NAME)
     domains = set()
-    # keys = [i.key for i in b.objects.all()]
-    # keys = [#'9lnmq3vep46ud66g7361o2otm18gri276hpu3no1', # GOOD
-    #        'dgjkhkmomb3iigunebqbbmpb1rnr76cfojnnqgo1'] # BAD
-    # print('Processing %d emails' % len(keys))
     for obj in b.objects.all():
         key = obj.key
         logging.info('Processing: ' + key)
@@ -127,7 +130,7 @@ def main():
             end = tree.find('report_metadata').find('date_range').find('end').text
             domains.add(domain)
 
-            logging.info('Received a report for {} from {}-{}'.format(domain, datetime.datetime.fromtimestamp(int(start)), datetime.datetime.fromtimestamp(int(end))))
+            logging.info('Received a report for {} that spans {} through {}'.format(domain, datetime.datetime.utcfromtimestamp(int(start)), datetime.datetime.utcfromtimestamp(int(end))))
 
     for d in sorted(list(domains)):
         print(d)
