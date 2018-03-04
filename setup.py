@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 from dmarc import __version__
 
 setup(
-    name='dmarc_import',
+    name='dmarc-import',
     version=__version__,
     description='A tool for parsing DMARC aggregate reports.',
     long_description=open('README.md').read(),
