@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """dmarc-import: A tool for parsing DMARC aggregate reports.  The
-expected format of these aggregate reports is described in RFC7489
+expected format of these aggregate reports is described in RFC 7489
 (https://tools.ietf.org/html/rfc7489#section-7.2.1.1).
 
 Usage:
