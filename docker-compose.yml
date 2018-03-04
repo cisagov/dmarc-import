@@ -2,18 +2,16 @@ version: '3.1'
 
 secrets:
   aws_creds:
-    file: /home/jeremy_frasier/.aws/credentials
+    file: secrets/aws/credentials
   aws_config:
-    file: /home/jeremy_frasier/.aws/config
+    file: secrets/aws/config
 
 services:
   dmarc-importer:
     build:
       context: .
     image: dhsncats/dmarc-importer:latest
-    command: "--debug"
-    volumes:
-     - ./dmarc:/usr/src/boat/dmarc
+    command: --s3-bucket=cyhy-dmarc-report-emails
     secrets:
       - aws_creds
       - aws_config
@@ -21,13 +19,3 @@ services:
       - AWS_CONFIG_FILE=/run/secrets/aws_config
       - AWS_SHARED_CREDENTIALS_FILE=/run/secrets/aws_creds
       - AWS_PROFILE=default
-    # deploy:
-    #   replicas: 1
-    #   update_config:
-    #     parallelism: 1
-    #     delay: 10s
-    #   restart_policy:
-    #     condition: on-failure
-    #     delay: 5s
-    #     max_attempts: 3
-    #     window: 120s
