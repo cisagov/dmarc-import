@@ -1,4 +1,32 @@
 #!/usr/bin/env python3
+
+"""dmarc-import: A tool for parsing DMARC aggregate reports.  The
+expected format of these aggregate reports is described in RFC7489
+(https://tools.ietf.org/html/rfc7489#section-7.2.1.1).
+
+Usage:
+  dmarc-import [--s3-bucket=BUCKET] [--s3-keys=KEYS] [--schema=SCHEMA] [--domains=FILE] [--reports=DIRECTORY] [--debug]
+  dmarc-import (-h | --help)
+
+Options:
+  -h --help           Show this message.
+  -d --debug          If specified, then the output will include debugging 
+                      messages.
+  --s3-bucket=BUCKET  The AWS S3 bucket containing the DMARC aggregate reports.
+  --s3-keys=KEYS      A comma-separated list of DMARC aggregate report keys.  
+                      If specified, only the specified DMARC aggregate reports 
+                      will be processed.  Otherwise all reports in the AWS S3 
+                      bucket will be processed.
+  --schema=SCHEMA     The XSD file against which the DMARC aggregate reports 
+                      are to be be verified.
+  --domains=FILE      A file to which to save a list of all domains for which 
+                      DMARC aggregate reports were received.  If not specified 
+                      then no such file will be created.
+  --reports=DIRECTORY A directory to which to write files containing DMARC 
+                      aggregate report contents.  If not specified then no 
+                      such files will be created.
+"""
+
 import binascii
 import datetime
 import email
@@ -13,23 +41,12 @@ import boto3
 import docopt
 from lxml import etree
 
+from dmarc import __version__
 
-'''
-Processes email which (tries to) follow RFC7489:
-https://tools.ietf.org/html/rfc7489#section-7.2.1.1
-'''
 
 BUCKET_NAME = 'cyhy-dmarc-report-emails'
 SCHEMA = etree.XMLSchema(file='/usr/src/boat/dmarc/rua_mod.xsd') #TODO
 PARSER = etree.XMLParser(schema=SCHEMA) #TODO
-
-def setup_logging(level=logging.INFO, filename=None):
-    logging.basicConfig(format='%(asctime)-15s %(levelname)s %(message)s', level=level)
-    if filename:
-        file_handler = RotatingFileHandler(filename, maxBytes=pow(1024,2) * 128, backupCount=9)
-        file_handler.setFormatter(formatter)
-        file_handler.addFilter(LogFilter())
-        root.addHandler(file_handler)
 
 def pp(tree):
     print(etree.tostring(tree, pretty_print=True).decode())
@@ -113,15 +130,22 @@ def process_message(message):
     return xml
 
 def main():
-    setup_logging()
+    # Parse command line arguments
+    args = docopt.docopt(__doc__, version=__version__)
+
+    # Set up logging
+    log_level = logging.WARNING
+    if args['--debug']:
+        log_level = logging.DEBUG
+    logging.basicConfig(format='%(asctime)-15s %(levelname)s %(message)s', level=log_level)
 
     s3 = boto3.resource('s3')
-    b = s3.Bucket(BUCKET_NAME)
+    bucket = s3.Bucket(args['--s3-bucket'])
     domains = set()
-    for obj in b.objects.all():
+    for obj in bucket.objects.all():
         key = obj.key
         logging.info('Processing: ' + key)
-        body = b.Object(key).get()['Body'].read()
+        body = bucket.Object(key).get()['Body'].read()
         message = email.message_from_bytes(body)
         tree = process_message(message)
         if tree is not None:
@@ -134,8 +158,9 @@ def main():
 
     for d in sorted(list(domains)):
         print(d)
-    #import IPython; IPython.embed() #<<< BREAKPOINT >>>
 
+    # Stop logging and clean up
+    logging.shutdown()
 
 
 if __name__ == '__main__':
