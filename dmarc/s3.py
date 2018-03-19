@@ -143,9 +143,8 @@ def main():
     bucket = s3.Bucket(args['--s3-bucket'])
     domains = set()
     for obj in bucket.objects.all():
-        key = obj.key
-        logging.info('Processing: ' + key)
-        body = bucket.Object(key).get()['Body'].read()
+        logging.info('Processing: ' + obj.key)
+        body = obj.get()['Body'].read()
         message = email.message_from_bytes(body)
         tree = process_message(message)
         if tree is not None:
@@ -154,7 +153,7 @@ def main():
             end = tree.find('report_metadata').find('date_range').find('end').text
             domains.add(domain)
 
-            logging.info('Received a report for {} that spans {} through {}'.format(domain, datetime.datetime.utcfromtimestamp(int(start)), datetime.datetime.utcfromtimestamp(int(end))))
+            logging.info('Received a report for {}'.format(domain))
 
     for d in sorted(list(domains)):
         print(d)
