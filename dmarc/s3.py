@@ -44,7 +44,6 @@ from lxml import etree
 from dmarc import __version__
 
 
-BUCKET_NAME = 'cyhy-dmarc-report-emails'
 SCHEMA = etree.XMLSchema(file='/usr/src/boat/dmarc/rua_mod.xsd') #TODO
 PARSER = etree.XMLParser(schema=SCHEMA) #TODO
 
