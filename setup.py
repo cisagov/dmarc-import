@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 from dmarc import __version__
 
@@ -6,7 +6,6 @@ setup(
     name='dmarc-import',
     version=__version__,
     description='A tool for parsing DMARC aggregate reports.',
-    long_description=open('README.md').read(),
 
     # NCATS "homepage"
     url='https://www.dhs.gov/cyber-incident-response',

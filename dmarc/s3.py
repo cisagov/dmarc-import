@@ -10,31 +10,29 @@ Usage:
 
 Options:
   -h --help           Show this message.
-  -d --debug          If specified, then the output will include debugging 
+  -d --debug          If specified, then the output will include debugging
                       messages.
   --s3-bucket=BUCKET  The AWS S3 bucket containing the DMARC aggregate reports.
-  --s3-keys=KEYS      A comma-separated list of DMARC aggregate report keys.  
-                      If specified, only the specified DMARC aggregate reports 
-                      will be processed.  Otherwise all reports in the AWS S3 
+  --s3-keys=KEYS      A comma-separated list of DMARC aggregate report keys.
+                      If specified, only the specified DMARC aggregate reports
+                      will be processed.  Otherwise all reports in the AWS S3
                       bucket will be processed.
-  --schema=SCHEMA     The XSD file against which the DMARC aggregate reports 
+  --schema=SCHEMA     The XSD file against which the DMARC aggregate reports
                       are to be be verified.
-  --domains=FILE      A file to which to save a list of all domains for which 
-                      DMARC aggregate reports were received.  If not specified 
+  --domains=FILE      A file to which to save a list of all domains for which
+                      DMARC aggregate reports were received.  If not specified
                       then no such file will be created.
-  --reports=DIRECTORY A directory to which to write files containing DMARC 
-                      aggregate report contents.  If not specified then no 
+  --reports=DIRECTORY A directory to which to write files containing DMARC
+                      aggregate report contents.  If not specified then no
                       such files will be created.
 """
 
 import binascii
-import datetime
 import email
 import gzip
 import io
 import logging
 import re
-import traceback
 import zipfile
 
 import boto3
@@ -44,18 +42,21 @@ from lxml import etree
 from dmarc import __version__
 
 
-SCHEMA = etree.XMLSchema(file='/usr/src/boat/dmarc/rua_mod.xsd') #TODO
-PARSER = etree.XMLParser(schema=SCHEMA) #TODO
+SCHEMA = etree.XMLSchema(file='/usr/src/boat/dmarc/rua_mod.xsd')  # TODO
+PARSER = etree.XMLParser(schema=SCHEMA)  # TODO
+
 
 def pp(tree):
     print(etree.tostring(tree, pretty_print=True).decode())
 
+
 def pp_validation_error(tree):
     logging.error(SCHEMA.error_log)
-    line_num = 2 # Dunno, it lines up with error messages
+    line_num = 2  # Dunno, it lines up with error messages
     for line in etree.tostring(tree).decode().splitlines():
         logging.error('%d\t%s' % (line_num, line))
         line_num += 1
+
 
 def pp_parse_error(payload, e):
     logging.error(e.error_log)
@@ -64,11 +65,13 @@ def pp_parse_error(payload, e):
         logging.error('%d\t%s' % (line_num, line))
         line_num += 1
 
+
 def patch_xml(payload):
     '''The rua schema needs some fixing'''
     patched = re.sub(b'<feedback.*?>', b'<provider:feedback xmlns:provider="http://dmarc.org/dmarc-xml/0.1">', payload)
     patched = re.sub(b'</feedback>', b'</provider:feedback>', patched)
     return patched
+
 
 def parse_payload(payload):
     try:
@@ -77,6 +80,7 @@ def parse_payload(payload):
         pp_parse_error(payload, e)
         return None
     return tree
+
 
 def decode_payload(content_type, payload):
     logging.debug('\t' + content_type + '\t size:' + str(len(payload)))
@@ -88,16 +92,17 @@ def decode_payload(content_type, payload):
     elif content_type in ['application/gzip']:
         payload = gzip.decompress(payload)
     elif content_type in ['text/xml']:
-        pass #TODO: log
+        pass  # TODO: log
     else:
-        return None #TODO: log
+        return None  # TODO: log
     return payload
 
+
 def process_payload(content_type, payload):
-    if payload == None:
+    if payload is None:
         return
     payload = decode_payload(content_type, payload)
-    if payload == None:
+    if payload is None:
         return
     patched = patch_xml(payload)
     tree = parse_payload(patched)
@@ -113,6 +118,7 @@ def process_payload(content_type, payload):
         pp_validation_error(tree)
     return tree
 
+
 def process_message(message):
     if message.is_multipart():
         # loop through message parts
@@ -121,12 +127,13 @@ def process_message(message):
                 xml = process_payload(part.get_content_type(), part.get_payload(decode=True))
             except (binascii.Error, AssertionError) as e:
                 logging.error('Caught an exception', e)
-    else: # not multipart
+    else:  # not multipart
         try:
             xml = process_payload(message.get_content_type(), message.get_payload(decode=True))
         except (binascii.Error, AssertionError) as e:
                 logging.error('Caught an exception', e)
     return xml
+
 
 def main():
     # Parse command line arguments
@@ -148,8 +155,6 @@ def main():
         tree = process_message(message)
         if tree is not None:
             domain = tree.find('policy_published').find('domain').text
-            start = tree.find('report_metadata').find('date_range').find('begin').text
-            end = tree.find('report_metadata').find('date_range').find('end').text
             domains.add(domain)
 
             logging.info('Received a report for {}'.format(domain))
