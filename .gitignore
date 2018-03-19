@@ -1,1 +1,6 @@
+.coverage
+.tox
+dmarc/__pycache__
+dmarc_import.egg-info
 secrets
+venv
