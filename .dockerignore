@@ -1,4 +1,12 @@
+.coverage
+.dockerignore
 .git
 .gitignore
+.tox
+dmarc_import.egg-info
 docker-compose.yml
 Dockerfile
+setup.cfg
+tox.ini
+.travis.yml
+venv
