@@ -121,18 +121,31 @@ def process_payload(content_type, payload):
 
 def process_message(message):
     if message.is_multipart():
-        # loop through message parts
+        # Loop through message parts
         for part in message.get_payload():
             try:
                 xml = process_payload(part.get_content_type(), part.get_payload(decode=True))
             except (binascii.Error, AssertionError) as e:
                 logging.error('Caught an exception', e)
-    else:  # not multipart
+    else:
+        # This isn't a multipart message
         try:
             xml = process_payload(message.get_content_type(), message.get_payload(decode=True))
         except (binascii.Error, AssertionError) as e:
                 logging.error('Caught an exception', e)
     return xml
+
+
+def do_it(obj, domains):
+    logging.info('Processing: ' + obj.key)
+    body = obj.get()['Body'].read()
+    message = email.message_from_bytes(body)
+    tree = process_message(message)
+    if tree is not None:
+        domain = tree.find('policy_published').find('domain').text
+        domains.add(domain)
+
+        logging.info('Received a report for {}'.format(domain))
 
 
 def main():
@@ -145,19 +158,19 @@ def main():
         log_level = logging.DEBUG
     logging.basicConfig(format='%(asctime)-15s %(levelname)s %(message)s', level=log_level)
 
+    # Get down to business
     s3 = boto3.resource('s3')
     bucket = s3.Bucket(args['--s3-bucket'])
     domains = set()
-    for obj in bucket.objects.all():
-        logging.info('Processing: ' + obj.key)
-        body = obj.get()['Body'].read()
-        message = email.message_from_bytes(body)
-        tree = process_message(message)
-        if tree is not None:
-            domain = tree.find('policy_published').find('domain').text
-            domains.add(domain)
-
-            logging.info('Received a report for {}'.format(domain))
+    if '--s3-keys' in args:
+        # The user specified the keys
+        for key in args['--s3-keys'].split(','):
+            do_it(bucket.Object(key.strip()), domains)
+    else:
+        # The user didn't specify the keys so iterate over all the keys in the
+        # bucket
+        for obj in bucket.objects.all():
+            do_it(obj, domains)
 
     for d in sorted(list(domains)):
         print(d)
