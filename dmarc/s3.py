@@ -55,11 +55,12 @@ def pp_parse_error(payload, e):
 
 
 def parse_payload(payload):
+    tree = None
     try:
         tree = etree.fromstring(payload)
     except etree.XMLSyntaxError as e:
         pp_parse_error(payload, e)
-        return None
+
     return tree
 
 
@@ -71,7 +72,8 @@ def patch_xml(payload):
 
 
 def decode_payload(content_type, payload):
-    logging.debug('\t' + content_type + '\t size:' + str(len(payload)))
+    logging.debug('Content type is {}, size is {}'.format(content_type, len(payload)))
+
     if content_type in ['application/x-zip-compressed', 'application/zip']:
         zip_bytes = io.BytesIO(payload)
         zip_file = zipfile.ZipFile(zip_bytes)
@@ -80,19 +82,27 @@ def decode_payload(content_type, payload):
     elif content_type in ['application/gzip']:
         payload = gzip.decompress(payload)
     elif content_type in ['text/xml']:
-        pass  # TODO: log
+        logging.warning('XML content not compressed')
+        pass
     else:
-        return None  # TODO: log
+        logging.error('Unhandled content type {}'.format(content_type))
+        payload = None
+
     return payload
 
 
 class Parser:
     schema = None
     # parser = None
+    domains = None
+    report_directory = None
 
-    def __init__(self, schema_file):
+    def __init__(self, schema_file, domain_file, report_directory):
         self.schema = etree.XMLSchema(file=schema_file)
         # self.parser = etree.XMLParser(schema=schema)
+        if domain_file is not None:
+            self.domains = open(domain_file, 'w')
+        self.report_directory = report_directory
 
     def pp_validation_error(self, tree):
         logging.error(self.schema.error_log)
@@ -106,50 +116,47 @@ class Parser:
             # Loop through message parts
             for part in message.get_payload():
                 try:
-                    xml = self.process_payload(part.get_content_type(), part.get_payload(decode=True))
+                    self.process_payload(part.get_content_type(), part.get_payload(decode=True))
                 except (binascii.Error, AssertionError) as e:
                     logging.error('Caught an exception', e)
+                    continue
         else:
             # This isn't a multipart message
             try:
-                xml = self.process_payload(message.get_content_type(), message.get_payload(decode=True))
+                self.process_payload(message.get_content_type(), message.get_payload(decode=True))
             except (binascii.Error, AssertionError) as e:
                 logging.error('Caught an exception', e)
 
-        return xml
-
     def process_payload(self, content_type, payload):
-        if payload is None:
-            return
-        payload = decode_payload(content_type, payload)
-        if payload is None:
-            return
-        patched = patch_xml(payload)
-        tree = parse_payload(patched)
-        if tree is None:
-            logging.error('RUA payload FAILED xml parsing')
-            return None
+        if payload is not None:
+            decoded_payload = decode_payload(content_type, payload)
+            if decoded_payload is not None:
+                patched_payload = patch_xml(decoded_payload)
+                tree = parse_payload(patched_payload)
+                if tree is not None:
+                    valid = self.schema.validate(tree)
+                    if valid:
+                        logging.debug('RUA payload passed schema validation')
+                        domain = tree.find('policy_published').find('domain').text
+                        logging.info('Received a report for {}'.format(domain))
+                        if self.domains:
+                            self.domains.write('{}\n'.format(domain))
+                        if self.report_directory:
+                            report_id = tree.find('report_metadata').find('report_id').text
+                            with open('{}/{}.xml'.format(self.report_directory, report_id), 'w') as report_file:
+                                report_file.write(etree.tostring(tree, pretty_print=True).decode())
+                    else:
+                        logging.error('RUA payload FAILED schema validation')
+                        self.pp_validation_error(tree)
+                else:
+                    logging.error('RUA payload FAILED xml parsing')
 
-        valid = self.schema.validate(tree)
-        if valid:
-            logging.debug('RUA payload passed schema validation')
-        else:
-            logging.error('RUA payload FAILED schema validation')
-            self.pp_validation_error(tree)
 
-        return tree
-
-
-def do_it(obj, parser, domains):
+def do_it(obj, parser):
     logging.info('Processing: ' + obj.key)
     body = obj.get()['Body'].read()
     message = email.message_from_bytes(body)
-    tree = parser.process_message(message)
-    if tree is not None:
-        domain = tree.find('policy_published').find('domain').text
-        domains.add(domain)
-
-        logging.info('Received a report for {}'.format(domain))
+    parser.process_message(message)
 
 
 def main():
@@ -163,27 +170,19 @@ def main():
     logging.basicConfig(format='%(asctime)-15s %(levelname)s %(message)s', level=log_level)
 
     # Get down to business
-    parser = Parser(args['--schema'])
+    parser = Parser(args['--schema'], args['--domains'], args['--reports'])
     s3 = boto3.resource('s3')
     bucket = s3.Bucket(args['--s3-bucket'])
-    domains = set()
     keys = args['--s3-keys']
     if keys:
         # The user specified the keys
         for key in keys.split(','):
-            do_it(bucket.Object(key.strip()), parser, domains)
+            do_it(bucket.Object(key.strip()), parser)
     else:
         # The user didn't specify the keys so iterate over all the keys in the
         # bucket
         for obj in bucket.objects.all():
-            do_it(obj, parser, domains)
-
-    # Print the list of domains collected to a file, if necessary
-    domain_file = args['--domains']
-    if domain_file:
-        with open(domain_file, 'w') as f:
-            for d in sorted(list(domains)):
-                f.write('{}\n'.format(d))
+            do_it(obj, parser)
 
     # Stop logging and clean up
     logging.shutdown()
