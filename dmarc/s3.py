@@ -174,7 +174,7 @@ class Parser:
         Parameters
         ----------
         schema_file : str
-            The name of the file containing the XML schema defining a DMARC 
+            The name of the file containing the XML schema defining a DMARC
             aggregate report.
 
         domain_file : str
