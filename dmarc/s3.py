@@ -136,7 +136,8 @@ class Parser:
         else:
             logging.error('RUA payload FAILED schema validation')
             self.pp_validation_error(tree)
-            return tree
+
+        return tree
 
 
 def do_it(obj, parser, domains):
