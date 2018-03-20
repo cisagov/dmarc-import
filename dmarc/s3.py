@@ -43,10 +43,27 @@ from dmarc import __version__
 
 
 def pp(tree):
+    """Pretty-print an XML element to standard out.
+
+    Parameters
+    ----------
+    tree : etree.Element
+        The XML element to be pretty-printed.
+    """
     print(etree.tostring(tree, pretty_print=True).decode())
 
 
 def pp_parse_error(payload, e):
+    """Pretty-print a parse error to the error log.
+
+    Parameters
+    ----------
+    payload : str
+        The XML string that caused the error.
+
+    e : Exception
+        The exception that was raised.
+    """
     logging.error(e.error_log)
     line_num = 1
     for line in payload.splitlines():
@@ -55,6 +72,17 @@ def pp_parse_error(payload, e):
 
 
 def parse_payload(payload):
+    """Parse the payload as XML.
+
+    Parameters
+    ----------
+    payload : str
+        The XML string to be parsed.
+
+    Returns
+    -------
+    etree.Element: The XML element that was parsed.
+    """
     tree = None
     try:
         tree = etree.fromstring(payload)
@@ -65,13 +93,37 @@ def parse_payload(payload):
 
 
 def patch_xml(payload):
-    '''The rua schema needs some fixing'''
+    """Patch the XML payload string so it can be handled by the schema.
+
+    Parameters
+    ----------
+    payload : str
+        The XML string to be patched.
+
+    Returns
+    -------
+    str: The patched XML string.
+    """
     patched = re.sub(b'<feedback.*?>', b'<provider:feedback xmlns:provider="http://dmarc.org/dmarc-xml/0.1">', payload)
     patched = re.sub(b'</feedback>', b'</provider:feedback>', patched)
     return patched
 
 
 def decode_payload(content_type, payload):
+    """Decode the payload extracted from the message into an XML string.
+
+    Parameters
+    ----------
+    content_type : str
+        The content type of the payload.
+
+    payload : str
+        The (possibly compressed) payload.
+
+    Returns
+    -------
+    str: The XML string extracted from the payload.
+    """
     logging.debug('Content type is {}, size is {}'.format(content_type, len(payload)))
 
     if content_type in ['application/x-zip-compressed', 'application/zip']:
@@ -92,12 +144,50 @@ def decode_payload(content_type, payload):
 
 
 class Parser:
+    """Handles the verification and parsing of DMARC aggregate reports
+
+    Attributes
+    ----------
+    schema : str
+        The name of the file containing the XML schema defining a
+        DMARC aggregate report.
+
+    domains : io.FileIO
+        The file object to which a list of the domains encountered
+        while parsing DMARC aggregate reports should be saved, or None
+        if no such file is to be saved.
+
+    report_directory : str
+        The name of the directory to which XML files containing the
+        DMARC aggregate reports encountered while parsing DMARC
+        aggregate reports should be saved, or None if no such files
+        are to be saved.
+    """
     schema = None
     # parser = None
     domains = None
     report_directory = None
 
-    def __init__(self, schema_file, domain_file, report_directory):
+    def __init__(self, schema_file, domain_file=None, report_directory=None):
+        """Construct a Parser instance.
+
+        Parameters
+        ----------
+        schema_file : str
+            The name of the file containing the XML schema defining a DMARC 
+            aggregate report.
+
+        domain_file : str
+            The name of the file to which a list of the domains
+            encountered while parsing DMARC aggregate reports should
+            be saved, or None if no such file is to be saved.
+
+        report_directory : str
+            The name of the directory to which XML files containing
+            the DMARC aggregate reports encountered while parsing
+            DMARC aggregate reports should be saved, or None if no
+            such files are to be saved.
+        """
         self.schema = etree.XMLSchema(file=schema_file)
         # self.parser = etree.XMLParser(schema=schema)
         if domain_file is not None:
@@ -105,13 +195,28 @@ class Parser:
         self.report_directory = report_directory
 
     def pp_validation_error(self, tree):
+        """Pretty-print a validation error to the error log.
+
+        Parameters
+        ----------
+        tree : etree.Element
+            The XML element that caused the error.
+        """
         logging.error(self.schema.error_log)
         line_num = 2  # Dunno, it lines up with error messages
         for line in etree.tostring(tree).decode().splitlines():
-            logging.error('%d\t%s' % (line_num, line))
+            logging.error('{}\t{}'.format(line_num, line))
             line_num += 1
 
     def process_message(self, message):
+        """Process a (possibly multipart) email message containing one
+        or more DMARC aggregate reports.
+
+        Parameters
+        ----------
+        message : email.message.EmailMessage
+            The email message to be processed.
+        """
         if message.is_multipart():
             # Loop through message parts
             for part in message.get_payload():
@@ -128,6 +233,17 @@ class Parser:
                 logging.error('Caught an exception', e)
 
     def process_payload(self, content_type, payload):
+        """Process a (possibly compressed) payload containing an DMARC
+        aggregate report.
+
+        Parameters
+        ----------
+        content_type : str
+            The content type of the payload.
+
+        payload : str
+            The (possibly compressed) payload.
+        """
         if payload is not None:
             decoded_payload = decode_payload(content_type, payload)
             if decoded_payload is not None:
@@ -152,7 +268,19 @@ class Parser:
                     logging.error('RUA payload FAILED xml parsing')
 
 
-def do_it(obj, parser):
+def process(obj, parser):
+    """Process an s3.Object retrieved from an S3 bucket that contains
+    a (possibly multipart) email message containing one or more DMARC
+    aggregate reports.
+
+    Parameters
+    ----------
+    obj : s3.Object
+        The s3.Object to be processed.
+
+    parser : Parser
+        The Parser to use for the processing.
+    """
     logging.info('Processing: ' + obj.key)
     body = obj.get()['Body'].read()
     message = email.message_from_bytes(body)
@@ -177,12 +305,12 @@ def main():
     if keys:
         # The user specified the keys
         for key in keys.split(','):
-            do_it(bucket.Object(key.strip()), parser)
+            process(bucket.Object(key.strip()), parser)
     else:
         # The user didn't specify the keys so iterate over all the keys in the
         # bucket
         for obj in bucket.objects.all():
-            do_it(obj, parser)
+            process(obj, parser)
 
     # Stop logging and clean up
     logging.shutdown()
