@@ -167,9 +167,10 @@ def main():
     s3 = boto3.resource('s3')
     bucket = s3.Bucket(args['--s3-bucket'])
     domains = set()
-    if '--s3-keys' in args and args['--s3-keys']:
+    keys = args['--s3-keys']
+    if keys:
         # The user specified the keys
-        for key in args['--s3-keys'].split(','):
+        for key in keys.split(','):
             do_it(bucket.Object(key.strip()), parser, domains)
     else:
         # The user didn't specify the keys so iterate over all the keys in the
@@ -177,8 +178,12 @@ def main():
         for obj in bucket.objects.all():
             do_it(obj, parser, domains)
 
-    for d in sorted(list(domains)):
-        print(d)
+    # Print the list of domains collected to a file, if necessary
+    domain_file = args['--domains']
+    if domain_file:
+        with open(domain_file, 'w') as f:
+            for d in sorted(list(domains)):
+                f.write('{}\n'.format(d))
 
     # Stop logging and clean up
     logging.shutdown()
