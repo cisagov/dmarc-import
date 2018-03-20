@@ -5,13 +5,14 @@ expected format of these aggregate reports is described in RFC 7489
 (https://tools.ietf.org/html/rfc7489#section-7.2.1.1).
 
 Usage:
-  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--debug]
+  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--debug] [--info] [--delete]
   dmarc-import (-h | --help)
 
 Options:
   -h --help           Show this message.
-  -d --debug          If specified, then the output will include debugging
-                      messages.
+  --debug             If specified, then the output will include info and
+                      debugging messages.
+  --info              If specified, then the output will include info messages.
   --schema=SCHEMA     The XSD file against which the DMARC aggregate reports
                       are to be be verified.
   --s3-bucket=BUCKET  The AWS S3 bucket containing the DMARC aggregate reports.
@@ -25,6 +26,8 @@ Options:
   --reports=DIRECTORY A directory to which to write files containing DMARC
                       aggregate report contents.  If not specified then no
                       such files will be created.
+  --delete            If present then the reports will be deleted after
+                      processing.
 """
 
 import binascii
@@ -268,7 +271,7 @@ class Parser:
                     logging.error('RUA payload FAILED xml parsing')
 
 
-def process(obj, parser):
+def process(obj, parser, delete):
     """Process an s3.Object retrieved from an S3 bucket that contains
     a (possibly multipart) email message containing one or more DMARC
     aggregate reports.
@@ -280,11 +283,17 @@ def process(obj, parser):
 
     parser : Parser
         The Parser to use for the processing.
+
+    delete : bool
+        Whether or not to delete the s3.Object after processing.
     """
     logging.info('Processing: ' + obj.key)
     body = obj.get()['Body'].read()
     message = email.message_from_bytes(body)
     parser.process_message(message)
+
+    if delete:
+        obj.delete()
 
 
 def main():
@@ -295,7 +304,14 @@ def main():
     log_level = logging.WARNING
     if args['--debug']:
         log_level = logging.DEBUG
+    elif args['--info']:
+        log_level = logging.INFO
     logging.basicConfig(format='%(asctime)-15s %(levelname)s %(message)s', level=log_level)
+
+    # Handle some command line arguments
+    delete = False
+    if args['--delete']:
+        delete = True
 
     # Get down to business
     parser = Parser(args['--schema'], args['--domains'], args['--reports'])
@@ -305,12 +321,12 @@ def main():
     if keys:
         # The user specified the keys
         for key in keys.split(','):
-            process(bucket.Object(key.strip()), parser)
+            process(bucket.Object(key.strip()), parser, delete)
     else:
         # The user didn't specify the keys so iterate over all the keys in the
         # bucket
         for obj in bucket.objects.all():
-            process(obj, parser)
+            process(obj, parser, delete)
 
     # Stop logging and clean up
     logging.shutdown()
