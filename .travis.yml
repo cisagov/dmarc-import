@@ -20,7 +20,7 @@ install:
   - pip install -e .
 
 script:
-  - pytest --cov=dmarc
+#  - pytest --cov=dmarc
   - flake8 .
   - travis_scripts/build_docker_image.sh
 
