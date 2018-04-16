@@ -6,6 +6,8 @@
 dmarc_import.egg-info
 docker-compose.yml
 Dockerfile
+LICENSE.md
+requirements.txt
 setup.cfg
 tox.ini
 .travis.yml
