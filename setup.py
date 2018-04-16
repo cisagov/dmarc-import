@@ -2,10 +2,18 @@ from setuptools import setup
 
 from dmarc import __version__
 
+
+def readme():
+    with open('README.md') as f:
+        return f.read()
+
+
 setup(
     name='dmarc-import',
     version=__version__,
-    description='A tool for parsing DMARC aggregate reports.',
+    description='A tool for parsing DMARC aggregate reports',
+    long_description=readme(),
+    long_description_content_type='text/markdown',
 
     # NCATS "homepage"
     url='https://www.dhs.gov/cyber-incident-response',
@@ -46,16 +54,19 @@ setup(
     packages=['dmarc'],
 
     install_requires=[
+        'boto3 >= 1.4.7',
         'docopt >= 0.6.2',
-        'lxml == 4.1.1',
-        'boto3 >= 1.4.7'
+        'lxml == 4.1.1'
     ],
 
     extras_require={
         # 'dev': ['check-manifest'],
-        'test': [
-            'tox',
-            'pytest'
+        'dev': [
+            'check-manifest>=0.36',
+            'pytest>=3.5.0',
+            'semver>=2.7.9',
+            'tox>=3.0.0',
+            'wheel>=0.31.0'
         ],
     },
 
