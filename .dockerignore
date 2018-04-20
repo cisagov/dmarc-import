@@ -3,6 +3,7 @@
 .git
 .gitignore
 .tox
+CONTRIBUTING.md
 dmarc_import.egg-info
 docker-compose.yml
 Dockerfile
