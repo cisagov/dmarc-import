@@ -22,6 +22,7 @@ install:
 script:
 #  - pytest --cov=dmarc
   - flake8 .
+  - docker-compose config --quiet
   - travis_scripts/build_docker_image.sh
 
 after_success:
