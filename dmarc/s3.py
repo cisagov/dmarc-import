@@ -30,7 +30,7 @@ Options:
                       processing.
 """
 
-# import binascii
+import binascii
 import email
 import gzip
 import io
