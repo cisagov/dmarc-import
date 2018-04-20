@@ -11,7 +11,8 @@ services:
     build:
       context: .
     image: dhsncats/dmarc-importer:latest
-    command: --schema=/usr/src/boat/dmarc/rua_mod.xsd --s3-bucket=cyhy-dmarc-report-emails
+    # command: --schema=/usr/src/boat/dmarc/rua_mod.xsd --s3-bucket=cyhy-dmarc-report-emails --s3-keys=000pphml9c59uumftg3tppllld51e0c07u110bg1 --domains=d.txt --log-level=debug
+    command: --schema=/usr/src/boat/dmarc/rua_mod.xsd --s3-bucket=cyhy-dmarc-report-emails --log-level=warn
     secrets:
       - aws_creds
       - aws_config
