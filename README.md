@@ -7,21 +7,32 @@
 expected format of these aggregate reports is described in
 [RFC 7489](https://tools.ietf.org/html/rfc7489#section-7.2.1.1).
 
-## Installation ##
+## Installation of the Python package ##
 
+### From PyPI ###
+
+```bash
+pip install dmarc-import
+```
+
+### From your local checkout ###
 After using `git` to clone the repository, you can install
 `dmarc-import` using `pip`:
 ```bash
 pip install /path/to/dmarc-import
 ```
 
+### From GitHub ###
 Or, if you prefer, you can install directly from
 [the GitHub repository](https://github.com/dhs-ncats/dmarc-import):
 ```bash
 pip install git+https://github.com/dhs-ncats/dmarc-import.git
 ```
 
-Alternatively, you can choose to build the Docker image:
+## Building the Docker image ##
+
+As an alternative to installing the Python package, you can instead
+choose to build the Docker image:
 ```bash
 docker-compose build
 ```
@@ -30,13 +41,14 @@ docker-compose build
 
 ```bash
 Usage:
-  dmarc-import [--s3-bucket=BUCKET] [--s3-keys=KEYS] [--schema=SCHEMA] [--domains=FILE] [--reports=DIRECTORY] [--debug]
+  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--log-level=LEVEL] [--delete]
   dmarc-import (-h | --help)
 
 Options:
   -h --help           Show this message.
-  -d --debug          If specified, then the output will include debugging 
-                      messages.
+  --log-level=LEVEL   If specified, then the log level will be set to the
+                      specified value.  Valid values are "debug", "info",
+                      "warn", and "error".
   --s3-bucket=BUCKET  The AWS S3 bucket containing the DMARC aggregate reports.
   --s3-keys=KEYS      A comma-separated list of DMARC aggregate report keys.  
                       If specified, only the specified DMARC aggregate reports 

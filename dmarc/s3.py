@@ -5,14 +5,14 @@ expected format of these aggregate reports is described in RFC 7489
 (https://tools.ietf.org/html/rfc7489#section-7.2.1.1).
 
 Usage:
-  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--debug] [--info] [--delete]
+  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--log-level=LEVEL] [--delete]
   dmarc-import (-h | --help)
 
 Options:
   -h --help           Show this message.
-  --debug             If specified, then the output will include info and
-                      debugging messages.
-  --info              If specified, then the output will include info messages.
+  --log-level=LEVEL   If specified, then the log level will be set to the
+                      specified value.  Valid values are "debug", "info",
+                      "warn", and "error".
   --schema=SCHEMA     The XSD file against which the DMARC aggregate reports
                       are to be be verified.
   --s3-bucket=BUCKET  The AWS S3 bucket containing the DMARC aggregate reports.
@@ -36,6 +36,7 @@ import gzip
 import io
 import logging
 import re
+import sys
 import zipfile
 
 import boto3
@@ -52,6 +53,11 @@ def pp(tree):
     ----------
     tree : etree.Element
         The XML element to be pretty-printed.
+
+    Throws
+    ------
+    UnicodeError: If the bytestring representing the XML element
+    cannot be decoded as UTF-8.
     """
     print(etree.tostring(tree, pretty_print=True).decode())
 
@@ -64,13 +70,13 @@ def pp_parse_error(payload, e):
     payload : str
         The XML string that caused the error.
 
-    e : Exception
-        The exception that was raised.
+    e : etree.XMLSyntaxError
+        The exception indicating a parsing error.
     """
     logging.error(e.error_log)
     line_num = 1
     for line in payload.splitlines():
-        logging.error('%d\t%s' % (line_num, line))
+        logging.error('{}\t{}'.format(line_num, line))
         line_num += 1
 
 
@@ -85,14 +91,13 @@ def parse_payload(payload):
     Returns
     -------
     etree.Element: The XML element that was parsed.
-    """
-    tree = None
-    try:
-        tree = etree.fromstring(payload)
-    except etree.XMLSyntaxError as e:
-        pp_parse_error(payload, e)
 
-    return tree
+    Throws
+    ------
+    etree.XMLSyntaxError: If the XML string to be parsed does not
+    adhere to valid XML syntax.
+    """
+    return etree.fromstring(payload)
 
 
 def patch_xml(payload):
@@ -107,13 +112,17 @@ def patch_xml(payload):
     -------
     str: The patched XML string.
     """
-    patched = re.sub(b'<feedback.*?>', b'<provider:feedback xmlns:provider="http://dmarc.org/dmarc-xml/0.1">', payload)
+    # Technically re.sub() could throw an re.error, but realistically this will
+    # never happen here because the regex expressions are hard coded
+    patched = re.sub(b'<feedback.*?>',
+                     b'<provider:feedback xmlns:provider="http://dmarc.org/dmarc-xml/0.1">', payload)
     patched = re.sub(b'</feedback>', b'</provider:feedback>', patched)
     return patched
 
 
 def decode_payload(content_type, payload):
-    """Decode the payload extracted from the message into an XML string.
+    """Decode the payload extracted from the message into an XML
+    string.
 
     Parameters
     ----------
@@ -127,27 +136,32 @@ def decode_payload(content_type, payload):
     -------
     str: The XML string extracted from the payload.
     """
-    logging.debug('Content type is {}, size is {}'.format(content_type, len(payload)))
+    logging.debug('Content type is {}, size is {}'.format(content_type,
+                                                          len(payload)))
 
     if content_type in ['application/x-zip-compressed', 'application/zip']:
-        zip_bytes = io.BytesIO(payload)
-        zip_file = zipfile.ZipFile(zip_bytes)
-        extracted_file = zip_file.open(zip_file.namelist()[0])
-        payload = extracted_file.read()
+        with io.BytesIO(payload) as zip_bytes:
+            try:
+                with zipfile.ZipFile(zip_bytes) as zip_file:
+                    with zip_file.open(zip_file.namelist()[0]) as extracted_file:
+                        decoded_payload = extracted_file.read()
+            except zipfile.BadZipFile as e:
+                logging.error('Unable to process zip data', e)
     elif content_type in ['application/gzip']:
-        payload = gzip.decompress(payload)
+        decoded_payload = gzip.decompress(payload)
     elif content_type in ['text/xml']:
         logging.warning('XML content not compressed')
-        pass
+        decoded_payload = payload
     else:
-        logging.error('Unhandled content type {}'.format(content_type))
-        payload = None
+        logging.warning('Unhandled content type {}'.format(content_type))
+        decoded_payload = None
 
-    return payload
+    return decoded_payload
 
 
 class Parser:
-    """Handles the verification and parsing of DMARC aggregate reports
+    """Class that handles the verification and parsing of DMARC
+    aggregate reports.
 
     Attributes
     ----------
@@ -220,20 +234,27 @@ class Parser:
         message : email.message.EmailMessage
             The email message to be processed.
         """
+        success = True
         if message.is_multipart():
             # Loop through message parts
             for part in message.get_payload():
-                try:
-                    self.process_payload(part.get_content_type(), part.get_payload(decode=True))
-                except (binascii.Error, AssertionError) as e:
-                    logging.error('Caught an exception', e)
-                    continue
+                # try:
+                    success &= self.process_payload(part.get_content_type(),
+                                                    part.get_payload(decode=True))
+                # except (binascii.Error, AssertionError) as e:
+                #     logging.error('Unable to process a multipart message payload', e)
+                #     success = False
+                #     continue
         else:
             # This isn't a multipart message
-            try:
-                self.process_payload(message.get_content_type(), message.get_payload(decode=True))
-            except (binascii.Error, AssertionError) as e:
-                logging.error('Caught an exception', e)
+            # try:
+                success = self.process_payload(message.get_content_type(),
+                                               message.get_payload(decode=True))
+            # except (binascii.Error, AssertionError) as e:
+            #     logging.error('Unable to process a non-multipart message payload', e)
+            #     success = False
+
+        return success
 
     def process_payload(self, content_type, payload):
         """Process a (possibly compressed) payload containing an DMARC
@@ -247,11 +268,18 @@ class Parser:
         payload : str
             The (possibly compressed) payload.
         """
+        success = True
         if payload is not None:
             decoded_payload = decode_payload(content_type, payload)
             if decoded_payload is not None:
                 patched_payload = patch_xml(decoded_payload)
-                tree = parse_payload(patched_payload)
+                tree = None
+                try:
+                    tree = parse_payload(patched_payload)
+                except etree.XMLSyntaxError as e:
+                    pp_parse_error(patched_payload, e)
+                    success = False
+
                 if tree is not None:
                     valid = self.schema.validate(tree)
                     if valid:
@@ -265,10 +293,14 @@ class Parser:
                             with open('{}/{}.xml'.format(self.report_directory, report_id), 'w') as report_file:
                                 report_file.write(etree.tostring(tree, pretty_print=True).decode())
                     else:
-                        logging.error('RUA payload FAILED schema validation')
+                        logging.error('RUA payload failed schema validation')
                         self.pp_validation_error(tree)
+                        success = False
                 else:
-                    logging.error('RUA payload FAILED xml parsing')
+                    logging.error('RUA payload failed XML parsing')
+                    success = False
+
+        return success
 
 
 def process(obj, parser, delete):
@@ -290,10 +322,18 @@ def process(obj, parser, delete):
     logging.info('Processing: ' + obj.key)
     body = obj.get()['Body'].read()
     message = email.message_from_bytes(body)
-    parser.process_message(message)
+    parsingSuccessful = parser.process_message(message)
+    if not parsingSuccessful:
+        logging.warn('Parsing NOT completely successful for S3 object with '
+                     'key {}'.format(obj.key))
 
     if delete:
-        obj.delete()
+        if parsingSuccessful:
+            logging.debug('Deleting S3 object with key {}'.format(obj.key))
+            obj.delete()
+        else:
+            logging.warn('Not deleting S3 object with key {} because parsing '
+                         'was not completely successful'.format(obj.key))
 
 
 def main():
@@ -302,11 +342,15 @@ def main():
 
     # Set up logging
     log_level = logging.WARNING
-    if args['--debug']:
-        log_level = logging.DEBUG
-    elif args['--info']:
-        log_level = logging.INFO
-    logging.basicConfig(format='%(asctime)-15s %(levelname)s %(message)s', level=log_level)
+    if args['--log-level']:
+        log_level = args['--log-level']
+    try:
+        logging.basicConfig(format='%(asctime)-15s %(levelname)s %(message)s',
+                            level=log_level.upper())
+    except ValueError as e:
+        logging.critical('"{}" is not a valid logging level.  Possible values '
+                         'are debug, info, warn, and error.'.format(log_level))
+        sys.exit(1)
 
     # Handle some command line arguments
     delete = False
