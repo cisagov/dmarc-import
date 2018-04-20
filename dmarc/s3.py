@@ -233,26 +233,35 @@ class Parser:
         ----------
         message : email.message.EmailMessage
             The email message to be processed.
+
+        Returns
+        -------
+        bool: True if the message was parsed successfully and False
+        otherwise.
         """
+        # The binascii.Error and AssertionError that appear below are raised if
+        # the payload contains a non-base64 digit.  We'll catch the exceptions
+        # here since we want to process any other message parts, but we'll log
+        # it and set success to False so that the message isn't deleted.
         success = True
         if message.is_multipart():
             # Loop through message parts
             for part in message.get_payload():
-                # try:
+                try:
                     success &= self.process_payload(part.get_content_type(),
                                                     part.get_payload(decode=True))
-                # except (binascii.Error, AssertionError) as e:
-                #     logging.error('Unable to process a multipart message payload', e)
-                #     success = False
-                #     continue
+                except (binascii.Error, AssertionError) as e:
+                    logging.error('Unable to process a multipart message payload', e)
+                    success = False
+                    continue
         else:
             # This isn't a multipart message
-            # try:
+            try:
                 success = self.process_payload(message.get_content_type(),
                                                message.get_payload(decode=True))
-            # except (binascii.Error, AssertionError) as e:
-            #     logging.error('Unable to process a non-multipart message payload', e)
-            #     success = False
+            except (binascii.Error, AssertionError) as e:
+                logging.error('Unable to process a non-multipart message payload', e)
+                success = False
 
         return success
 
@@ -267,6 +276,11 @@ class Parser:
 
         payload : str
             The (possibly compressed) payload.
+
+        Returns
+        -------
+        bool: True if the payload was parsed successfully and False
+        otherwise.
         """
         success = True
         if payload is not None:
