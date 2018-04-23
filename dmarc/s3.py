@@ -5,7 +5,7 @@ expected format of these aggregate reports is described in RFC 7489
 (https://tools.ietf.org/html/rfc7489#section-7.2.1.1).
 
 Usage:
-  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--log-level=LEVEL] [--delete]
+  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--elasticsearch=URL] [--es-index=INDEX] [--log-level=LEVEL] [--delete]
   dmarc-import (-h | --help)
 
 Options:
@@ -26,6 +26,12 @@ Options:
   --reports=DIRECTORY A directory to which to write files containing DMARC
                       aggregate report contents.  If not specified then no
                       such files will be created.
+  --elasticsearch=URL A base URL corresponding to an Elasticsearch
+                      instance.  If specified, then aggregate reports
+                      will be written to this location at the index
+                      specified by the --es-index option.
+  --es-index=INDEX    The Elasticsearch index at which to write aggregate
+                      reports.
   --delete            If present then the reports will be deleted after
                       processing.
 """
@@ -41,7 +47,9 @@ import zipfile
 
 import boto3
 import docopt
+# from elasticsearch import Elasticsearch
 from lxml import etree
+from xmljson import GData
 
 from dmarc import __version__
 
@@ -179,13 +187,19 @@ class Parser:
         DMARC aggregate reports encountered while parsing DMARC
         aggregate reports should be saved, or None if no such files
         are to be saved.
-    """
-    schema = None
-    # parser = None
-    domains = None
-    report_directory = None
 
-    def __init__(self, schema_file, domain_file=None, report_directory=None):
+    es : elasticsearch.Elasticsearch
+        The connection to the Elasticsearch database.
+
+    es_index : str
+        The Elasticsearch index at which to write aggregate reports.
+
+    gdata : xmljson.GData
+        Converts XML to JSON using the GData convention.
+    """
+
+    def __init__(self, schema_file, domain_file=None, report_directory=None,
+                 es_url=None, es_index=None):
         """Construct a Parser instance.
 
         Parameters
@@ -204,12 +218,33 @@ class Parser:
             the DMARC aggregate reports encountered while parsing
             DMARC aggregate reports should be saved, or None if no
             such files are to be saved.
+
+        es_url : str
+            A base URL corresponding to an Elasticsearch instance.
+            Aggregate reports will be written to this location at the
+            index specified by the --index option.
+
+        es_index : str
+            The Elasticsearch index at which to write aggregate reports.
         """
         self.schema = etree.XMLSchema(file=schema_file)
-        # self.parser = etree.XMLParser(schema=schema)
+
         if domain_file is not None:
             self.domains = open(domain_file, 'w')
+        else:
+            self.domains = None
+
         self.report_directory = report_directory
+
+        if es_url is not None:
+            # self.es = Elasticsearch([es_url])
+            self.es = es_url
+        else:
+            self.es = None
+
+        self.es_index = es_index
+
+        self.gdata = GData(dict_type=dict)
 
     def pp_validation_error(self, tree):
         """Pretty-print a validation error to the error log.
@@ -300,12 +335,21 @@ class Parser:
                         logging.debug('RUA payload passed schema validation')
                         domain = tree.find('policy_published').find('domain').text
                         logging.info('Received a report for {}'.format(domain))
-                        if self.domains:
+
+                        # Write the domain to the domains file if necessary
+                        if self.domains is not None:
                             self.domains.write('{}\n'.format(domain))
-                        if self.report_directory:
+
+                        # Write the report to the report directory if necessary
+                        if self.report_directory is not None:
                             report_id = tree.find('report_metadata').find('report_id').text
                             with open('{}/{}.xml'.format(self.report_directory, report_id), 'w') as report_file:
                                 report_file.write(etree.tostring(tree, pretty_print=True).decode())
+
+                        # Write the report to Elasticsearch if necessary
+                        if (self.es is not None) and (self.es_index is not None):
+                            logging.info(self.gdata.data(tree))
+                            # result = es.index(index=self.es_index, body=xmljson.gdata.data(tree))
                     else:
                         logging.error('RUA payload failed schema validation')
                         self.pp_validation_error(tree)
@@ -372,7 +416,8 @@ def main():
         delete = True
 
     # Get down to business
-    parser = Parser(args['--schema'], args['--domains'], args['--reports'])
+    parser = Parser(args['--schema'], args['--domains'], args['--reports'],
+                    args['--elasticsearch'], args['--es-index'])
     s3 = boto3.resource('s3')
     bucket = s3.Bucket(args['--s3-bucket'])
     keys = args['--s3-keys']
