@@ -10,9 +10,8 @@ ENV MY_SRC="/usr/src/boat" \
 #RUN groupadd --system -g ${MY_UID} boat && \
 #    useradd -m --system -u ${MY_UID} --gid boat boat
 
-# RUN pip install --no-cache-dir --upgrade https://github.com/jsf9k/dmarc-import.git
 COPY . ${MY_SRC}
-RUN pip install --no-cache-dir ${MY_SRC}
+RUN pip install --no-cache-dir --upgrade ${MY_SRC}
 
 # USER boat
 WORKDIR ${MY_HOME}
