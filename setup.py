@@ -54,13 +54,14 @@ setup(
     packages=['dmarc'],
 
     install_requires=[
-        'boto3 >= 1.4.7',
-        'docopt >= 0.6.2',
-        'lxml == 4.1.1'
+        'boto3>=1.4.7',
+        'docopt>=0.6.2',
+        'elasticsearch>=6.0.0,<7.0.0',
+        'lxml==4.1.1',
+        'xmljson>=0.1.9'
     ],
 
     extras_require={
-        # 'dev': ['check-manifest'],
         'dev': [
             'check-manifest>=0.36',
             'pytest>=3.5.0',
