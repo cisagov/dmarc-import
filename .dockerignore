@@ -2,6 +2,7 @@
 .dockerignore
 .git
 .gitignore
+.pytest_cache
 .tox
 CONTRIBUTING.md
 dmarc_import.egg-info
