@@ -5,7 +5,7 @@ expected format of these aggregate reports is described in RFC 7489
 (https://tools.ietf.org/html/rfc7489#section-7.2.1.1).
 
 Usage:
-  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--elasticsearch=URL] [--es-region=REGION] [--log-level=LEVEL] [--dmarcian-token=TOKEN] [--delete]
+  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--elasticsearch=URL] [--es-region=REGION] [--log-level=LEVEL] [--dmarcian-token=FILE] [--delete]
   dmarc-import (-h | --help)
 
 Options:
@@ -32,7 +32,8 @@ Options:
                           aggregate reports should be written.
   --es-region=REGION      The AWS region where the Elasticsearch instance
                           is located.
-  --dmarcian-token=TOKEN  The Dmarcian API token.  If specified then the
+  --dmarcian-token=FILE   A simple text file whose only contents are the
+                          Dmarcian API token.  If specified then the
                           Dmarcian API will be queried to determine what
                           commercial mail-sending organization (if any) is
                           associated with the IP in the aggregate report.
@@ -495,10 +496,14 @@ def main():
     if args['--delete']:
         delete = True
 
+    token = None
+    if args['--dmarcian-token']:
+        with open(args['--dmarcian-token'], 'r') as token_file:
+            token = token_file.read().strip()
+
     # Get down to business
     parser = Parser(args['--schema'], args['--domains'], args['--reports'],
-                    args['--elasticsearch'], args['--es-region'],
-                    args['--dmarcian-token'])
+                    args['--elasticsearch'], args['--es-region'], token)
     s3 = boto3.resource('s3')
     bucket = s3.Bucket(args['--s3-bucket'])
     keys = args['--s3-keys']
