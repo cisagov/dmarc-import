@@ -5,7 +5,7 @@ expected format of these aggregate reports is described in RFC 7489
 (https://tools.ietf.org/html/rfc7489#section-7.2.1.1).
 
 Usage:
-  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--elasticsearch=URL] [--es-index=INDEX] [--log-level=LEVEL] [--dmarcian-token=TOKEN] [--delete]
+  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--elasticsearch=URL] [--es-region=REGION] [--log-level=LEVEL] [--dmarcian-token=TOKEN] [--delete]
   dmarc-import (-h | --help)
 
 Options:
@@ -27,12 +27,11 @@ Options:
   --reports=DIRECTORY     A directory to which to write files containing DMARC
                           aggregate report contents.  If not specified then no
                           such files will be created.
-  --elasticsearch=URL     A base URL corresponding to an Elasticsearch
-                          instance.  If specified, then aggregate reports
-                          will be written to this location at the index
-                          specified by the --es-index option.
-  --es-index=INDEX        The Elasticsearch index at which to write aggregate
-                          reports.
+  --elasticsearch=URL     A URL corresponding to an AWS Elasticsearch
+                          instance, including the index where the DMARC
+                          aggregate reports should be written.
+  --es-region=REGION      The AWS region where the Elasticsearch instance
+                          is located.
   --dmarcian-token=TOKEN  The Dmarcian API token.  If specified then the
                           Dmarcian API will be queried to determine what
                           commercial mail-sending organization (if any) is
@@ -52,9 +51,9 @@ import zipfile
 
 import boto3
 import docopt
-# from elasticsearch import Elasticsearch
 from lxml import etree
 import requests
+from requests_aws4auth import AWS4Auth
 from xmljson import Parker
 
 from dmarc import __version__
@@ -198,11 +197,13 @@ class Parser:
         aggregate reports should be saved, or None if no such files
         are to be saved.
 
-    es : elasticsearch.Elasticsearch
-        The connection to the Elasticsearch database.
+    es_url : str
+        A URL corresponding to an AWS Elasticsearch instance,
+        including the index where DMARC aggregate reports should be
+        written.
 
-    es_index : str
-        The Elasticsearch index at which to write aggregate reports.
+    es_region : str
+        The AWS region where the Elasticsearch instance is located.
 
     parker : xmljson.Parker
         Converts XML to JSON using the Parker convention.  Since the
@@ -229,7 +230,7 @@ class Parser:
     __Timeout = 300
 
     def __init__(self, schema_file, domain_file=None, report_directory=None,
-                 es_url=None, es_index=None, api_token=None):
+                 es_url=None, es_region=None, api_token=None):
         """Construct a Parser instance.
 
         Parameters
@@ -250,12 +251,9 @@ class Parser:
             such files are to be saved.
 
         es_url : str
-            A base URL corresponding to an Elasticsearch instance.
-            Aggregate reports will be written to this location at the
-            index specified by the --index option.
-
-        es_index : str
-            The Elasticsearch index at which to write aggregate reports.
+            A URL corresponding to an AWS Elasticsearch instance,
+            including the index where DMARC aggregate reports should
+            be written.
 
         api_token : str
             The Dmarcian API token.
@@ -269,13 +267,8 @@ class Parser:
 
         self.report_directory = report_directory
 
-        if es_url is not None:
-            # self.es = Elasticsearch([es_url])
-            self.es = es_url
-        else:
-            self.es = None
-
-        self.es_index = es_index
+        self.es_url = es_url
+        self.es_region = es_region
 
         # We don't care about order of dictionary elements here, so we can use
         # a simple dict instead of the default OrderedDict
@@ -411,6 +404,7 @@ class Parser:
                                     # We can't query the Dmarcian API because
                                     # of an error, so just add an empty entry
                                     record['row']['source_ip_affiliation'] = None
+                                    success = False
                             else:
                                 # We can't query the Dmarcian API because we
                                 # don't have a token, so just add an empty
@@ -418,9 +412,24 @@ class Parser:
                                 record['row']['source_ip_affiliation'] = None
 
                         # Write the report to Elasticsearch if necessary
-                        if (self.es is not None) and (self.es_index is not None):
-                            # result = es.index(index=self.es_index, body=xmljson.gdata.data(tree))
-                            pass
+                        if (self.es_url is not None) and (self.es_region is not None):
+                            credentials = boto3.Session().get_credentials()
+                            awsauth = AWS4Auth(credentials.access_key,
+                                               credentials.secret_key,
+                                               self.es_region,
+                                               'es',
+                                               session_token=credentials.token)
+                            try:
+                                response = requests.post(self.es_url,
+                                                         auth=awsauth,
+                                                         json=jsn,
+                                                         timeout=Parser.__Timeout)
+                                # Raises an exception if we didn't get back a
+                                # 200 code
+                                response.raise_for_status()
+                            except requests.exceptions.RequestException as e:
+                                logging.exception('Unable to save the DMARC aggregate report to Elasticsearch')
+                                success = False
                     else:
                         logging.error('RUA payload failed schema validation')
                         self.pp_validation_error(tree)
@@ -488,7 +497,7 @@ def main():
 
     # Get down to business
     parser = Parser(args['--schema'], args['--domains'], args['--reports'],
-                    args['--elasticsearch'], args['--es-index'],
+                    args['--elasticsearch'], args['--es-region'],
                     args['--dmarcian-token'])
     s3 = boto3.resource('s3')
     bucket = s3.Bucket(args['--s3-bucket'])
