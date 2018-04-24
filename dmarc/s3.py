@@ -225,6 +225,9 @@ class Parser:
     """The value of the authentication header required by the Dmarcian API"""
     __DmarcianHeaderValue = 'Token {}'
 
+    """The timeout in seconds to use when retrieving API data"""
+    __Timeout = 300
+
     def __init__(self, schema_file, domain_file=None, report_directory=None,
                  es_url=None, es_index=None, api_token=None):
         """Construct a Parser instance.
@@ -395,11 +398,23 @@ class Parser:
                             if self.api_headers is not None:
                                 ip = record['row']['source_ip']
                                 url = Parser.__DmarcianApiUrl.format(ip)
-                                response = requests.get(url, headers=self.api_headers)
-                                record['row']['source_ip_affiliation'] = response.json()[ip]
+                                try:
+                                    response = requests.get(url,
+                                                            headers=self.api_headers,
+                                                            timeout=Parser.__Timeout)
+                                    # Raises an exception if we didn't get back
+                                    # a 200 code
+                                    response.raise_for_status()
+                                    record['row']['source_ip_affiliation'] = response.json()[ip]
+                                except requests.exceptions.RequestException as e:
+                                    logging.exception('Unable to use the Dmarcian API to determine the affiliation of source IP {}'.format(ip))
+                                    # We can't query the Dmarcian API because
+                                    # of an error, so just add an empty entry
+                                    record['row']['source_ip_affiliation'] = None
                             else:
-                                # We can't query the Dmarcian API, so just add
-                                # an empty entry
+                                # We can't query the Dmarcian API because we
+                                # don't have a token, so just add an empty
+                                # entry
                                 record['row']['source_ip_affiliation'] = None
 
                         # Write the report to Elasticsearch if necessary
