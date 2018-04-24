@@ -5,35 +5,40 @@ expected format of these aggregate reports is described in RFC 7489
 (https://tools.ietf.org/html/rfc7489#section-7.2.1.1).
 
 Usage:
-  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--elasticsearch=URL] [--es-index=INDEX] [--log-level=LEVEL] [--delete]
+  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--elasticsearch=URL] [--es-index=INDEX] [--log-level=LEVEL] [--dmarcian-token=TOKEN] [--delete]
   dmarc-import (-h | --help)
 
 Options:
-  -h --help           Show this message.
-  --log-level=LEVEL   If specified, then the log level will be set to the
-                      specified value.  Valid values are "debug", "info",
-                      "warn", and "error".
-  --schema=SCHEMA     The XSD file against which the DMARC aggregate reports
-                      are to be be verified.
-  --s3-bucket=BUCKET  The AWS S3 bucket containing the DMARC aggregate reports.
-  --s3-keys=KEYS      A comma-separated list of DMARC aggregate report keys.
-                      If specified, only the specified DMARC aggregate reports
-                      will be processed.  Otherwise all reports in the AWS S3
-                      bucket will be processed.
-  --domains=FILE      A file to which to save a list of all domains for which
-                      DMARC aggregate reports were received.  If not specified
-                      then no such file will be created.
-  --reports=DIRECTORY A directory to which to write files containing DMARC
-                      aggregate report contents.  If not specified then no
-                      such files will be created.
-  --elasticsearch=URL A base URL corresponding to an Elasticsearch
-                      instance.  If specified, then aggregate reports
-                      will be written to this location at the index
-                      specified by the --es-index option.
-  --es-index=INDEX    The Elasticsearch index at which to write aggregate
-                      reports.
-  --delete            If present then the reports will be deleted after
-                      processing.
+  -h --help               Show this message.
+  --log-level=LEVEL       If specified, then the log level will be set to the
+                          specified value.  Valid values are "debug", "info",
+                          "warn", and "error".
+  --schema=SCHEMA         The XSD file against which the DMARC aggregate
+                          reports are to be be verified.
+  --s3-bucket=BUCKET      The AWS S3 bucket containing the DMARC aggregate
+                          reports.
+  --s3-keys=KEYS          A comma-separated list of DMARC aggregate report
+                          keys.  If specified, only the specified DMARC
+                          aggregate reports will be processed.  Otherwise all
+                          reports in the AWS S3 bucket will be processed.
+  --domains=FILE          A file to which to save a list of all domains for
+                          which DMARC aggregate reports were received.  If not
+                          specified then no such file will be created.
+  --reports=DIRECTORY     A directory to which to write files containing DMARC
+                          aggregate report contents.  If not specified then no
+                          such files will be created.
+  --elasticsearch=URL     A base URL corresponding to an Elasticsearch
+                          instance.  If specified, then aggregate reports
+                          will be written to this location at the index
+                          specified by the --es-index option.
+  --es-index=INDEX        The Elasticsearch index at which to write aggregate
+                          reports.
+  --dmarcian-token=TOKEN  The Dmarcian API token.  If specified then the
+                          Dmarcian API will be queried to determine what
+                          commercial mail-sending organization (if any) is
+                          associated with the IP in the aggregate report.
+  --delete                If present then the reports will be deleted after
+                          processing.
 """
 
 import binascii
@@ -49,25 +54,30 @@ import boto3
 import docopt
 # from elasticsearch import Elasticsearch
 from lxml import etree
-from xmljson import GData
+import requests
+from xmljson import Parker
 
 from dmarc import __version__
 
 
 def pp(tree):
-    """Pretty-print an XML element to standard out.
+    """Pretty-print an XML element.
 
     Parameters
     ----------
     tree : etree.Element
         The XML element to be pretty-printed.
 
+    Returns
+    -------
+    str: A string containing the pretty-printed XML.
+
     Throws
     ------
     UnicodeError: If the bytestring representing the XML element
     cannot be decoded as UTF-8.
     """
-    print(etree.tostring(tree, pretty_print=True).decode())
+    return etree.tostring(tree, pretty_print=True).decode()
 
 
 def pp_parse_error(payload, e):
@@ -194,12 +204,29 @@ class Parser:
     es_index : str
         The Elasticsearch index at which to write aggregate reports.
 
-    gdata : xmljson.GData
-        Converts XML to JSON using the GData convention.
+    parker : xmljson.Parker
+        Converts XML to JSON using the Parker convention.  Since the
+        aggregate report XSD does not define any attributes we can use
+        this convention to simplify the JSON without losing any
+        information.
+
+    api_headers : dict
+        The Dmarcian API authentication header.
     """
 
+    """The URL for the Dmarcian API call that retrieves the bulk
+    mail-sending organization (if any) associated with an IP.
+    """
+    __DmarcianApiUrl = 'https://dmarcian.com/api/v1/find/source/{}'
+
+    """The name of the authentication header required by the Dmarcian API"""
+    __DmarcianHeaderName = 'Authorization'
+
+    """The value of the authentication header required by the Dmarcian API"""
+    __DmarcianHeaderValue = 'Token {}'
+
     def __init__(self, schema_file, domain_file=None, report_directory=None,
-                 es_url=None, es_index=None):
+                 es_url=None, es_index=None, api_token=None):
         """Construct a Parser instance.
 
         Parameters
@@ -226,6 +253,9 @@ class Parser:
 
         es_index : str
             The Elasticsearch index at which to write aggregate reports.
+
+        api_token : str
+            The Dmarcian API token.
         """
         self.schema = etree.XMLSchema(file=schema_file)
 
@@ -244,7 +274,16 @@ class Parser:
 
         self.es_index = es_index
 
-        self.gdata = GData(dict_type=dict)
+        # We don't care about order of dictionary elements here, so we can use
+        # a simple dict instead of the default OrderedDict
+        self.parker = Parker(dict_type=dict)
+
+        if api_token is not None:
+            self.api_headers = {
+                Parser.__DmarcianHeaderName: Parser.__DmarcianHeaderValue.format(api_token)
+            }
+        else:
+            self.api_headers = None
 
     def pp_validation_error(self, tree):
         """Pretty-print a validation error to the error log.
@@ -277,7 +316,7 @@ class Parser:
         # The binascii.Error and AssertionError that appear below are raised if
         # the payload contains a non-base64 digit.  We'll catch the exceptions
         # here since we want to process any other message parts, but we'll log
-        # it and set success to False so that the message isn't deleted.
+        # them and set success to False so that the message isn't deleted.
         success = True
         if message.is_multipart():
             # Loop through message parts
@@ -333,6 +372,7 @@ class Parser:
                     valid = self.schema.validate(tree)
                     if valid:
                         logging.debug('RUA payload passed schema validation')
+                        logging.debug('Report XML is: {}'.format(pp(tree)))
                         domain = tree.find('policy_published').find('domain').text
                         logging.info('Received a report for {}'.format(domain))
 
@@ -346,10 +386,26 @@ class Parser:
                             with open('{}/{}.xml'.format(self.report_directory, report_id), 'w') as report_file:
                                 report_file.write(etree.tostring(tree, pretty_print=True).decode())
 
+                        # Convert the XML to JSON
+                        jsn = self.parker.data(tree)
+
+                        # Find the bulk mail-sending organizations (if any)
+                        # associated with the IPs in the report
+                        for record in jsn['record']:
+                            if self.api_headers is not None:
+                                ip = record['row']['source_ip']
+                                url = Parser.__DmarcianApiUrl.format(ip)
+                                response = requests.get(url, headers=self.api_headers)
+                                record['row']['source_ip_affiliation'] = response.json()[ip]
+                            else:
+                                # We can't query the Dmarcian API, so just add
+                                # an empty entry
+                                record['row']['source_ip_affiliation'] = None
+
                         # Write the report to Elasticsearch if necessary
                         if (self.es is not None) and (self.es_index is not None):
-                            logging.info(self.gdata.data(tree))
                             # result = es.index(index=self.es_index, body=xmljson.gdata.data(tree))
+                            pass
                     else:
                         logging.error('RUA payload failed schema validation')
                         self.pp_validation_error(tree)
@@ -382,16 +438,16 @@ def process(obj, parser, delete):
     message = email.message_from_bytes(body)
     parsingSuccessful = parser.process_message(message)
     if not parsingSuccessful:
-        logging.warn('Parsing NOT completely successful for S3 object with '
-                     'key {}'.format(obj.key))
+        logging.warning('Parsing NOT completely successful for S3 object with '
+                        'key {}'.format(obj.key))
 
     if delete:
         if parsingSuccessful:
             logging.debug('Deleting S3 object with key {}'.format(obj.key))
             obj.delete()
         else:
-            logging.warn('Not deleting S3 object with key {} because parsing '
-                         'was not completely successful'.format(obj.key))
+            logging.warning('Not deleting S3 object with key {} because parsing '
+                            'was not completely successful'.format(obj.key))
 
 
 def main():
@@ -417,7 +473,8 @@ def main():
 
     # Get down to business
     parser = Parser(args['--schema'], args['--domains'], args['--reports'],
-                    args['--elasticsearch'], args['--es-index'])
+                    args['--elasticsearch'], args['--es-index'],
+                    args['--dmarcian-token'])
     s3 = boto3.resource('s3')
     bucket = s3.Bucket(args['--s3-bucket'])
     keys = args['--s3-keys']
