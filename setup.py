@@ -58,6 +58,7 @@ setup(
         'docopt>=0.6.2',
         'elasticsearch>=6.0.0,<7.0.0',
         'lxml==4.1.1',
+        'requests>=2.18.4',
         'xmljson>=0.1.9'
     ],
 
