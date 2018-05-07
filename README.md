@@ -41,27 +41,40 @@ docker-compose build
 
 ```bash
 Usage:
-  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--log-level=LEVEL] [--delete]
+  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--elasticsearch=URL] [--es-region=REGION] [--log-level=LEVEL] [--dmarcian-token=FILE] [--delete]
   dmarc-import (-h | --help)
 
 Options:
-  -h --help           Show this message.
-  --log-level=LEVEL   If specified, then the log level will be set to the
-                      specified value.  Valid values are "debug", "info",
-                      "warn", and "error".
-  --s3-bucket=BUCKET  The AWS S3 bucket containing the DMARC aggregate reports.
-  --s3-keys=KEYS      A comma-separated list of DMARC aggregate report keys.  
-                      If specified, only the specified DMARC aggregate reports 
-                      will be processed.  Otherwise all reports in the AWS S3 
-                      bucket will be processed.
-  --schema=SCHEMA     The XSD file against which the DMARC aggregate reports 
-                      are to be be verified.
-  --domains=FILE      A file to which to save a list of all domains for which 
-                      DMARC aggregate reports were received.  If not specified 
-                      then no such file will be created.
-  --reports=DIRECTORY A directory to which to write files containing DMARC 
-                      aggregate report contents.  If not specified then no 
-                      such files will be created.
+  -h --help               Show this message.
+  --log-level=LEVEL       If specified, then the log level will be set to the
+                          specified value.  Valid values are "debug", "info",
+                          "warn", and "error".
+  --schema=SCHEMA         The XSD file against which the DMARC aggregate
+                          reports are to be be verified.
+  --s3-bucket=BUCKET      The AWS S3 bucket containing the DMARC aggregate
+                          reports.
+  --s3-keys=KEYS          A comma-separated list of DMARC aggregate report
+                          keys.  If specified, only the specified DMARC
+                          aggregate reports will be processed.  Otherwise all
+                          reports in the AWS S3 bucket will be processed.
+  --domains=FILE          A file to which to save a list of all domains for
+                          which DMARC aggregate reports were received.  If not
+                          specified then no such file will be created.
+  --reports=DIRECTORY     A directory to which to write files containing DMARC
+                          aggregate report contents.  If not specified then no
+                          such files will be created.
+  --elasticsearch=URL     A URL corresponding to an AWS Elasticsearch
+                          instance, including the index where the DMARC
+                          aggregate reports should be written.
+  --es-region=REGION      The AWS region where the Elasticsearch instance
+                          is located.
+  --dmarcian-token=FILE   A simple text file whose only contents are the
+                          Dmarcian API token.  If specified then the
+                          Dmarcian API will be queried to determine what
+                          commercial mail-sending organization (if any) is
+                          associated with the IP in the aggregate report.
+  --delete                If present then the reports will be deleted after
+                          processing.
 ```
 
 ## Setting up Docker secrets ##
@@ -73,6 +86,8 @@ credentials for the Docker container to use.  These files are:
   configuration](http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html)
 * `secrets/aws/credentials` - [an ini format file containing the AWS
   credentials](http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html)
+* `secrets/dmarcian/token` - a text file containing a [Dmarcian API
+  token](https://dmarcian.com/)
 
 ## License ##
 
