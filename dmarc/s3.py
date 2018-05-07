@@ -475,6 +475,72 @@ def process(obj, parser, delete):
                             'was not completely successful'.format(obj.key))
 
 
+def do_it(schema, s3_bucket, s3_keys=None, domains=None,
+          reports=None, elasticsearch=None, es_region=None,
+          dmarcian_token=None, delete=False):
+    """Process one or more email messages retrieved from an S3 bucket.
+
+    Each (possibly multipart) email message should contain one or more
+    DMARC aggregate reports.
+
+    Parameters
+    ----------
+    schema : str
+        The path to the XSD file against which the DMARC aggregate
+        reports are to be be verified.
+
+    s3_bucket : str
+        The AWS S3 bucket containing the DMARC aggregate reports.
+
+    s3-keys : str
+        A comma-separated list of DMARC aggregate report keys.  If not
+        None then only the specified DMARC aggregate reports will be
+        processed.  Otherwise all reports in the AWS S3 bucket will be
+        processed.
+
+    domains : str
+        A file to which to save a list of all domains for which DMARC
+        aggregate reports were received.  If None then no such file
+        will be created.
+
+    reports : str
+        A directory to which to write files containing DMARC aggregate
+        report contents.  If None then no such files will be created.
+
+    elasticsearch : str
+        A URL corresponding to an AWS Elasticsearch instance,
+        including the index where the DMARC aggregate reports should
+        be written.  If None then data will not be saved to
+        Elasticsearch.
+
+    es_region : str
+        The AWS region where the Elasticsearch instance is located.
+        Can be None if Elasticsearch is not being used.
+
+    dmarcian_token : str
+        The Dmarcian API token.  If not None then the Dmarcian API
+        will be queried to determine what commercial mail-sending
+        organization (if any) is associated with the IP in the
+        aggregate report.
+
+    delete : bool
+        If present then the reports will be deleted after processing.
+    """
+    parser = Parser(schema, domains, reports, elasticsearch,
+                    es_region, dmarcian_token)
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket(s3_bucket)
+    if s3_keys:
+        # The user specified the keys
+        for key in s3_keys.split(','):
+            process(bucket.Object(key.strip()), parser, delete)
+    else:
+        # The user didn't specify the keys so iterate over all the keys in the
+        # bucket
+        for obj in bucket.objects.all():
+            process(obj, parser, delete)
+
+
 def main():
     # Parse command line arguments
     args = docopt.docopt(__doc__, version=__version__)
@@ -502,20 +568,9 @@ def main():
             token = token_file.read().strip()
 
     # Get down to business
-    parser = Parser(args['--schema'], args['--domains'], args['--reports'],
-                    args['--elasticsearch'], args['--es-region'], token)
-    s3 = boto3.resource('s3')
-    bucket = s3.Bucket(args['--s3-bucket'])
-    keys = args['--s3-keys']
-    if keys:
-        # The user specified the keys
-        for key in keys.split(','):
-            process(bucket.Object(key.strip()), parser, delete)
-    else:
-        # The user didn't specify the keys so iterate over all the keys in the
-        # bucket
-        for obj in bucket.objects.all():
-            process(obj, parser, delete)
+    do_it(args['--schema'], args['--s3-bucket'], args['--s3-keys'],
+          args['--domains'], args['--reports'],
+          args['--elasticsearch'], args['--es-region'], token, delete)
 
     # Stop logging and clean up
     logging.shutdown()
