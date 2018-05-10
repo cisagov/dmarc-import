@@ -53,6 +53,9 @@ setup(
 
     packages=['dmarc'],
 
+    # This causes the files listed in the Manifest to be included
+    include_package_data=True,
+
     install_requires=[
         'boto3>=1.4.7',
         'docopt>=0.6.2',
