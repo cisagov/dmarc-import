@@ -457,6 +457,11 @@ def process(obj, parser, delete):
 
     delete : bool
         Whether or not to delete the s3.Object after processing.
+
+    Returns
+    -------
+    bool: True if the payload was parsed successfully and False
+    otherwise.
     """
     logging.info('Processing: ' + obj.key)
     body = obj.get()['Body'].read()
@@ -473,6 +478,8 @@ def process(obj, parser, delete):
         else:
             logging.warning('Not deleting S3 object with key {} because parsing '
                             'was not completely successful'.format(obj.key))
+
+    return parsingSuccessful
 
 
 def do_it(schema, s3_bucket, s3_keys=None, domains=None,
@@ -525,7 +532,14 @@ def do_it(schema, s3_bucket, s3_keys=None, domains=None,
 
     delete : bool
         If present then the reports will be deleted after processing.
+
+    Returns
+    -------
+    dict : A dict whose keys are the S3 object keys and whose values
+    are a boolean value indicating whether parsing was successful for
+    that key.
     """
+    returnVal = {}
     parser = Parser(schema, domains, reports, elasticsearch,
                     es_region, dmarcian_token)
     s3 = boto3.resource('s3')
@@ -533,12 +547,16 @@ def do_it(schema, s3_bucket, s3_keys=None, domains=None,
     if s3_keys:
         # The user specified the keys
         for key in s3_keys.split(','):
-            process(bucket.Object(key.strip()), parser, delete)
+            success = process(bucket.Object(key.strip()), parser, delete)
+            returnVal[key] = success
     else:
         # The user didn't specify the keys so iterate over all the keys in the
         # bucket
         for obj in bucket.objects.all():
-            process(obj, parser, delete)
+            success = process(obj, parser, delete)
+            returnVal[key] = success
+
+    return returnVal
 
 
 def main():
