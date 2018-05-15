@@ -410,6 +410,7 @@ class Parser:
                                 # We can't query the Dmarcian API because we
                                 # don't have a token, so just add an empty
                                 # entry
+                                logging.debug('json is: {}'.format(jsn))
                                 logging.debug('record is: {}'.format(record))
                                 record['row']['source_ip_affiliation'] = None
 
