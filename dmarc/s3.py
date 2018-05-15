@@ -424,6 +424,7 @@ class Parser:
                                 response = requests.post(self.es_url,
                                                          auth=awsauth,
                                                          json=jsn,
+                                                         headers={'Content-Type': 'application/json'}
                                                          timeout=Parser.__Timeout)
                                 # Raises an exception if we didn't get back a
                                 # 200 code
