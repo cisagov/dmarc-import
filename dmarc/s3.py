@@ -387,8 +387,13 @@ class Parser:
                         jsn = self.parker.data(tree)
 
                         # Find the bulk mail-sending organizations (if any)
-                        # associated with the IPs in the report
-                        for record in jsn['record']:
+                        # associated with the IPs in the report.
+                        #
+                        # jsn['record'] can be a list if there are multiple
+                        # record tags in the XML, or a dict if there is only a
+                        # single record tag.  Parser.listify() will make sure
+                        # that we have a list here.
+                        for record in Parser.listify(jsn['record']):
                             if self.api_headers is not None:
                                 ip = record['row']['source_ip']
                                 url = Parser.__DmarcianApiUrl.format(ip)
@@ -443,6 +448,27 @@ class Parser:
                     success = False
 
         return success
+
+    @staticmethod
+    def listify(x):
+        """If x is a list then just return it.  If x is a dict then
+        return a list with x as the sole item.
+
+        Parameters
+        ----------
+        x : list, dict
+            The list or dict to be listified.
+
+        Returns
+        -------
+        list: x if x is a list.  If x is a dict then returns a list
+        with x as the sole item.
+        """
+        retVal = x
+        if isinstance(x, dict):
+            retVal = [x]
+
+        return retVal
 
 
 def process(obj, parser, delete):
