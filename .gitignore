@@ -1,7 +1,7 @@
 .coverage
 .pytest_cache
+.python-version
 .tox
 dmarc/__pycache__
 dmarc_import.egg-info
 secrets
-venv
