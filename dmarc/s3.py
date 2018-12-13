@@ -583,7 +583,7 @@ def do_it(schema, s3_bucket, s3_keys=None, domains=None,
         # bucket
         for obj in bucket.objects.all():
             success = process(obj, parser, delete)
-            returnVal[key] = success
+            returnVal[obj.key] = success
 
     return returnVal
 
@@ -593,7 +593,7 @@ def main():
     args = docopt.docopt(__doc__, version=__version__)
 
     # Set up logging
-    log_level = logging.WARNING
+    log_level = logging.getLevelName(logging.WARNING)
     if args['--log-level']:
         log_level = args['--log-level']
     try:
