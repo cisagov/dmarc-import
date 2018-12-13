@@ -5,40 +5,42 @@ expected format of these aggregate reports is described in RFC 7489
 (https://tools.ietf.org/html/rfc7489#section-7.2.1.1).
 
 Usage:
-  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--elasticsearch=URL] [--es-region=REGION] [--log-level=LEVEL] [--dmarcian-token=FILE] [--delete]
+  dmarc-import --schema=SCHEMA --s3-bucket=BUCKET [--s3-keys=KEYS] [--domains=FILE] [--reports=DIRECTORY] [--elasticsearch-url=URL] [--elasticsearch-index=INDEX] [--es-region=REGION] [--log-level=LEVEL] [--dmarcian-token=FILE] [--delete]
   dmarc-import (-h | --help)
 
 Options:
-  -h --help               Show this message.
-  --log-level=LEVEL       If specified, then the log level will be set to the
-                          specified value.  Valid values are "debug", "info",
-                          "warn", and "error".
-  --schema=SCHEMA         The XSD file against which the DMARC aggregate
-                          reports are to be be verified.
-  --s3-bucket=BUCKET      The AWS S3 bucket containing the DMARC aggregate
-                          reports.
-  --s3-keys=KEYS          A comma-separated list of DMARC aggregate report
-                          keys.  If specified, only the specified DMARC
-                          aggregate reports will be processed.  Otherwise all
-                          reports in the AWS S3 bucket will be processed.
-  --domains=FILE          A file to which to save a list of all domains for
-                          which DMARC aggregate reports were received.  If not
-                          specified then no such file will be created.
-  --reports=DIRECTORY     A directory to which to write files containing DMARC
-                          aggregate report contents.  If not specified then no
-                          such files will be created.
-  --elasticsearch=URL     A URL corresponding to an AWS Elasticsearch
-                          instance, including the index where the DMARC
-                          aggregate reports should be written.
-  --es-region=REGION      The AWS region where the Elasticsearch instance
-                          is located.
-  --dmarcian-token=FILE   A simple text file whose only contents are the
-                          Dmarcian API token.  If specified then the
-                          Dmarcian API will be queried to determine what
-                          commercial mail-sending organization (if any) is
-                          associated with the IP in the aggregate report.
-  --delete                If present then the reports will be deleted after
-                          processing.
+  -h --help                   Show this message.
+  --log-level=LEVEL           If specified, then the log level will be set to
+                              the specified value.  Valid values are "debug",
+                              "info", "warn", and "error".
+  --schema=SCHEMA             The XSD file against which the DMARC aggregate
+                              reports are to be be verified.
+  --s3-bucket=BUCKET          The AWS S3 bucket containing the DMARC aggregate
+                              reports.
+  --s3-keys=KEYS              A comma-separated list of DMARC aggregate report
+                              keys.  If specified, only the specified DMARC
+                              aggregate reports will be processed.  Otherwise
+                              all reports in the AWS S3 bucket will be
+                              processed.
+  --domains=FILE              A file to which to save a list of all domains for
+                              which DMARC aggregate reports were received.  If
+                              not specified then no such file will be created.
+  --reports=DIRECTORY         A directory to which to write files containing
+                              DMARC aggregate report contents.  If not specified
+                              then no such files will be created.
+  --elasticsearch-url=URL     A URL corresponding to an AWS Elasticsearch
+                              instance.
+  --elasticsearch-index=INDEX The Elasticsearch index where the DMARC aggregate
+                              reports should be written.
+  --es-region=REGION          The AWS region where the Elasticsearch instance
+                              is located.
+  --dmarcian-token=FILE       A simple text file whose only contents are the
+                              Dmarcian API token.  If specified then the
+                              Dmarcian API will be queried to determine what
+                              commercial mail-sending organization (if any) is
+                              associated with the IP in the aggregate report.
+  --delete                    If present then the reports will be deleted after
+                              processing.
 """
 
 import binascii
@@ -199,9 +201,12 @@ class Parser:
         are to be saved.
 
     es_url : str
-        A URL corresponding to an AWS Elasticsearch instance,
-        including the index where DMARC aggregate reports should be
-        written.
+        The Elasticsearch index where the DMARC aggregate reports
+        should be written.
+
+    es_index : str
+        The index to use when writing the DMARC aggregate reports to
+        Elasticsearch.
 
     es_region : str
         The AWS region where the Elasticsearch instance is located.
@@ -230,8 +235,96 @@ class Parser:
     """The timeout in seconds to use when retrieving API data"""
     __Timeout = 300
 
+    """The payload to use when creating the Elasticsearch index where
+DMARC aggregate reports are stored.
+    """
+    __IndexPayload = {
+        'mappings': {
+            '_doc': {
+                'properties': {
+                    'policy_published': {
+                        'properties': {
+                            'adkim': {'type': 'text'},
+                            'aspf': {'type': 'text'},
+                            'domain': {'type': 'text'},
+                            'fo': {'type': 'long'},
+                            'p': {'type': 'text'},
+                            'pct': {'type': 'long'},
+                            'sp': {'type': 'text'}
+                        }
+                    },
+                    'record': {
+                        'properties': {
+                            'auth_results': {
+                                'properties': {
+                                    'dkim': {
+                                        'properties': {
+                                            'domain': {'type': 'text'},
+                                            'human_result': {'type': 'text'},
+                                            'result': {'type': 'text'},
+                                            'selector': {'type': 'text'}
+                                        }
+                                    },
+                                    'spf': {
+                                        'properties': {
+                                            'domain': {'type': 'text'},
+                                            'result': {'type': 'text'},
+                                            'scope': {'type': 'text'}
+                                        }
+                                    }
+                                }
+                            },
+                            'identifiers': {
+                                'properties': {
+                                    'envelope_from': {'type': 'text'},
+                                    'envelope_to': {'type': 'text'},
+                                    'header_from': {'type': 'text'}
+                                }
+                            },
+                            'row': {
+                                'properties': {
+                                    'count': {'type': 'long'},
+                                    'policy_evaluated': {
+                                        'properties': {
+                                            'disposition': {'type': 'text'},
+                                            'dkim': {'type': 'text'},
+                                            'reason': {
+                                                'properties': {
+                                                    'comment': {'type': 'text'},
+                                                    'type': {'type': 'text'}
+                                                }
+                                            },
+                                            'spf': {'type': 'text'}
+                                        }
+                                    },
+                                    'source_ip': {'type': 'text'}
+                                }
+                            }
+                        }
+                    },
+                    'report_metadata': {
+                        'properties': {
+                            'date_range': {
+                                'properties': {
+                                    'begin': {'type': 'long'},
+                                    'end': {'type': 'long'}
+                                }
+                            },
+                            'email': {'type': 'text'},
+                            'error': {'type': 'text'},
+                            'extra_contact_info': {'type': 'text'},
+                            'org_name': {'type': 'text'},
+                            'report_id': {'type': 'text'}
+                        }
+                    },
+                    'version': {'type': 'float'}
+                }
+            }
+        }
+    }
+
     def __init__(self, schema_file, domain_file=None, report_directory=None,
-                 es_url=None, es_region=None, api_token=None):
+                 es_url=None, es_index=None, es_region=None, api_token=None):
         """Construct a Parser instance.
 
         Parameters
@@ -252,9 +345,12 @@ class Parser:
             such files are to be saved.
 
         es_url : str
-            A URL corresponding to an AWS Elasticsearch instance,
-            including the index where DMARC aggregate reports should
-            be written.
+            A URL corresponding to an AWS Elasticsearch instance where
+            DMARC aggregate reports should be written.
+
+        es_index : str
+            The index to use when writing the DMARC aggregate reports
+            to Elasticsearch.
 
         api_token : str
             The Dmarcian API token.
@@ -269,6 +365,7 @@ class Parser:
         self.report_directory = report_directory
 
         self.es_url = es_url
+        self.es_index = es_index
         self.es_region = es_region
 
         # We don't care about order of dictionary elements here, so we can use
@@ -420,15 +517,40 @@ class Parser:
                                 record['row']['source_ip_affiliation'] = None
 
                         # Write the report to Elasticsearch if necessary
-                        if (self.es_url is not None) and (self.es_region is not None):
+                        if (self.es_url is not None) and (self.es_region is not None) and (self.es_index is not None):
                             credentials = boto3.Session().get_credentials()
                             awsauth = AWS4Auth(credentials.access_key,
                                                credentials.secret_key,
                                                self.es_region,
                                                'es',
                                                session_token=credentials.token)
+
+                            # Check if the index exists and create it
+                            # if necessary
+                            index_only_url = '{}/{}'.format(self.es_url,
+                                                            self.es_index)
+                            response = requests.head(index_only_url,
+                                                     auth=awsauth,
+                                                     timeout=Parser.__Timeout)
+                            if response.status_code != 200:
+                                logging.info('The index {} does not exist.  Creating it.'.format(self.es_index))
+                                try:
+                                    response = requests.put(index_only_url,
+                                                            auth=awsauth,
+                                                            json=Parser.__IndexPayload,
+                                                            headers={'Content-Type': 'application/json'},
+                                                            timeout=Parser.__Timeout)
+                                    # Raises an exception if we didn't get back a
+                                    # 200 code
+                                    response.raise_for_status()
+                                except requests.exceptions.RequestException:
+                                    logging.exception('Unable to create the index {}.'.format(self.es_index))
+                                    return False
+
+                            # Now save the report
+                            full_url = '{}/_doc'.format(index_only_url)
                             try:
-                                response = requests.post(self.es_url,
+                                response = requests.post(full_url,
                                                          auth=awsauth,
                                                          json=jsn,
                                                          headers={'Content-Type': 'application/json'},
@@ -436,7 +558,7 @@ class Parser:
                                 # Raises an exception if we didn't get back a
                                 # 200 code
                                 response.raise_for_status()
-                            except requests.exceptions.RequestException as e:
+                            except requests.exceptions.RequestException:
                                 logging.exception('Unable to save the DMARC aggregate report to Elasticsearch')
                                 success = False
                     else:
@@ -511,8 +633,8 @@ def process(obj, parser, delete):
     return parsingSuccessful
 
 
-def do_it(schema, s3_bucket, s3_keys=None, domains=None,
-          reports=None, elasticsearch=None, es_region=None,
+def do_it(schema, s3_bucket, s3_keys=None, domains=None, reports=None,
+          elasticsearch_url=None, elasticsearch_index=None, es_region=None,
           dmarcian_token=None, delete=False):
     """Process one or more email messages retrieved from an S3 bucket.
 
@@ -543,11 +665,13 @@ def do_it(schema, s3_bucket, s3_keys=None, domains=None,
         A directory to which to write files containing DMARC aggregate
         report contents.  If None then no such files will be created.
 
-    elasticsearch : str
-        A URL corresponding to an AWS Elasticsearch instance,
-        including the index where the DMARC aggregate reports should
-        be written.  If None then data will not be saved to
-        Elasticsearch.
+    elasticsearch_url : str
+        A URL corresponding to an AWS Elasticsearch instance.  If None
+        then data will not be saved to Elasticsearch.
+
+    elasticsearch_index : str
+        The Elasticsearch index where the DMARC aggregate reports
+        should be written.
 
     es_region : str
         The AWS region where the Elasticsearch instance is located.
@@ -569,8 +693,8 @@ def do_it(schema, s3_bucket, s3_keys=None, domains=None,
     that key.
     """
     returnVal = {}
-    parser = Parser(schema, domains, reports, elasticsearch,
-                    es_region, dmarcian_token)
+    parser = Parser(schema, domains, reports, elasticsearch_url,
+                    elasticsearch_index, es_region, dmarcian_token)
     s3 = boto3.resource('s3')
     bucket = s3.Bucket(s3_bucket)
     if s3_keys:
@@ -617,7 +741,8 @@ def main():
     # Get down to business
     do_it(args['--schema'], args['--s3-bucket'], args['--s3-keys'],
           args['--domains'], args['--reports'],
-          args['--elasticsearch'], args['--es-region'], token, delete)
+          args['--elasticsearch-url'], args['--elasticsearch-index'],
+          args['--es-region'], token, delete)
 
     # Stop logging and clean up
     logging.shutdown()
