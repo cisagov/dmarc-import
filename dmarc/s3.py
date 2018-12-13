@@ -502,7 +502,7 @@ DMARC aggregate reports are stored.
                                     # a 200 code
                                     response.raise_for_status()
                                     record['row']['source_ip_affiliation'] = response.json()[ip]
-                                except requests.exceptions.RequestException as e:
+                                except requests.exceptions.RequestException:
                                     logging.exception('Unable to use the Dmarcian API to determine the affiliation of source IP {}'.format(ip))
                                     # We can't query the Dmarcian API because
                                     # of an error, so just add an empty entry
@@ -723,7 +723,7 @@ def main():
     try:
         logging.basicConfig(format='%(asctime)-15s %(levelname)s %(message)s',
                             level=log_level.upper())
-    except ValueError as e:
+    except ValueError:
         logging.critical('"{}" is not a valid logging level.  Possible values '
                          'are debug, info, warn, and error.'.format(log_level))
         sys.exit(1)
