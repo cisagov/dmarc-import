@@ -1,6 +1,7 @@
 language: python
+sudo: yes
+dist: xenial
 
-sudo: required
 services:
   - docker
 
@@ -11,17 +12,19 @@ env:
     - secure: "tokvtXaT0X6EWsoG3WnJMsDQFRw2IkU3gKDKiCdKWOv4LpSvbuTAvZ4y7eyiDRo1l4PmOZjOW8fIKc0k8xLzPsw0jPhe0ILngwUytSnKmLNkavEreQPb7gGwLAyuO9T35fwNa5KjwYNeRwRenyGOLCBeaEeipsyaek6YXSOKzjeAcUHOcHy/J7BQKJYEaLGFq7iTXmor51pBhZW+1BPeYXbS7dpYrPf99vtIkaZgAbHPzPHY9NHKw2ATLar6fSRi+IZe3ppl9tzh4rIWy5USOA2qIwe81jONbRf6xnTBwEMY6mXOVu3W22/uM7ldmMT2ocFNeZewbUix/FjVO3HxsEz6dMiD2iFb2DCXIaQBKVxdQtx7aKSm4VBCLEf8N1LbuqLSiF3xnFvKAR1+h3htajeX11Lh2iWIqwCSqKMul0jNy1vfbPI4rwP7G1guWb5EHgL76RFkQLm7DFtt6ybqsPn0fD0rf9/1C95hC4dwuAaOL4ZsTF7voy5cgEoXHymhsAKDACFdIHl1GYqrELFoCkKKhuh83nkNDI9hbiqTnOXv8rmMOuRBEr0IgJzHGISi4vZulW2ms/7+AnSdBUL/A/jEkk2k1ef6adhFolyUzrJWfIL80Bu6bTSASaDn98qlT7ulOR9UWiqBK7OyZhFmsde9PzNYGVCEwCXIruqZ7x0="
 
 python:
-  - '3.4'
-  - '3.5'
   - '3.6'
+
+before_install:
+  - sudo apt-get install -y shellcheck
 
 install:
   - pip install flake8 pytest-cov coveralls
   - pip install -e .
 
 script:
-#  - pytest --cov=dmarc
+  - shellcheck bump_version.sh tag.sh
   - flake8 .
+#  - pytest --cov=dmarc
   - docker-compose config --quiet
   - travis_scripts/build_docker_image.sh
 
