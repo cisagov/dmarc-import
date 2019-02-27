@@ -1,7 +1,7 @@
 # dmarc-import :postal_horn: :mailbox: #
 
-[![Build Status](https://travis-ci.org/dhs-ncats/dmarc-import.svg?branch=develop)](https://travis-ci.org/dhs-ncats/dmarc-import)
-[![Coverage Status](https://coveralls.io/repos/github/dhs-ncats/dmarc-import/badge.svg?branch=develop)](https://coveralls.io/github/dhs-ncats/dmarc-import?branch=develop)
+[![Build Status](https://travis-ci.org/cisagov/dmarc-import.svg?branch=develop)](https://travis-ci.org/cisagov/dmarc-import)
+[![Coverage Status](https://coveralls.io/repos/github/cisagov/dmarc-import/badge.svg?branch=develop)](https://coveralls.io/github/cisagov/dmarc-import?branch=develop)
 
 `dmarc-import` is a tool for parsing DMARC aggregate reports.  The
 expected format of these aggregate reports is described in
@@ -24,9 +24,9 @@ pip install /path/to/dmarc-import
 
 ### From GitHub ###
 Or, if you prefer, you can install directly from
-[the GitHub repository](https://github.com/dhs-ncats/dmarc-import):
+[the GitHub repository](https://github.com/cisagov/dmarc-import):
 ```bash
-pip install git+https://github.com/dhs-ncats/dmarc-import.git
+pip install git+https://github.com/cisagov/dmarc-import.git
 ```
 
 ## Building the Docker image ##

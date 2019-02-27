@@ -1,5 +1,5 @@
 FROM python:3
-MAINTAINER Shane Frasier <jeremy.frasier@beta.dhs.gov>
+MAINTAINER Shane Frasier <jeremy.frasier@trio.dhs.gov>
 
 # Update pip and setuptools to the latest versions
 RUN pip install --no-cache-dir --upgrade pip setuptools
