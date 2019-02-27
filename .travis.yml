@@ -22,7 +22,7 @@ install:
   - pip install -e .
 
 script:
-  - shellcheck bump_version.sh tag.sh
+  - shellcheck bump_version.sh tag.sh travis_scripts/*.sh
   - flake8 .
 #  - pytest --cov=dmarc
   - docker-compose config --quiet
