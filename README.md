@@ -1,6 +1,6 @@
 # dmarc-import :postal_horn: :mailbox: #
 
-[![Build Status](https://travis-ci.org/cisagov/dmarc-import.svg?branch=develop)](https://travis-ci.org/cisagov/dmarc-import)
+[![Build Status](https://travis-ci.com/cisagov/dmarc-import.svg?branch=develop)](https://travis-ci.com/cisagov/dmarc-import)
 [![Coverage Status](https://coveralls.io/repos/github/cisagov/dmarc-import/badge.svg?branch=develop)](https://coveralls.io/github/cisagov/dmarc-import?branch=develop)
 
 `dmarc-import` is a tool for parsing DMARC aggregate reports.  The
