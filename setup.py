@@ -59,7 +59,7 @@ setup(
     install_requires=[
         'boto3>=1.4.7',
         'docopt>=0.6.2',
-        'lxml==4.6.3',
+        'lxml==6.1.0',
         'requests>=2.18.4',
         'requests-aws4auth>=0.9',
         'xmljson>=0.1.9'
